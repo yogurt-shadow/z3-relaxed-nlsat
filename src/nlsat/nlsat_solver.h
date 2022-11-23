@@ -240,7 +240,7 @@ namespace nlsat {
         /**
            \brief Display literal
         */
-        std::ostream& display(std::ostream & out, literal l) const;
+        std::ostream& display_literal(std::ostream & out, literal l) const;
 
         std::ostream& display(std::ostream & out, unsigned n, literal const* ls) const;
 
@@ -254,6 +254,10 @@ namespace nlsat {
 
         std::ostream& display_smt2(std::ostream & out, literal_vector const& ls) const;
 
+         // wzh ls
+        std::ostream& display_clause(std::ostream & out, clause const & c) const;
+        std::ostream& display_var(std::ostream & out, var v) const;
+        // hzw ls
 
         /**
            \brief Display variable

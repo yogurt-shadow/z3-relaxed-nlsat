@@ -47,7 +47,11 @@ Revision History:
  * version2 (2022/10/05)
  * 
  * @note Implementation of relaxed nlsat
- * 
+ * 1. define promising branch
+ * 2. how to extend to a full assignment
+ * 3. var conflict step add to vsids score
+ * 4. literal conflict step add to literal score, decide literal with highest score
+ * 5. process most weighted clause first
  * ---------------------------------------------------------------------------------------------------------------
  **/
 
@@ -71,6 +75,9 @@ Revision History:
 #include "nlsat/nlsat_dynamic.h"
 // hzw dynamic
 
+// wzh ls
+#include "nlsat/nlsat_local_search.h"
+// hzw ls
 
 #define NLSAT_EXTRA_VERBOSE
 
@@ -166,6 +173,20 @@ namespace nlsat {
         var_vector             m_inv_perm;
 
         search_mode m_search_mode;
+
+        // relaxed nlsat
+        bool                   can_call_ls;
+        unsigned               freeze_ls_num;
+        ls_helper              m_lsh;
+        bool                   m_enable_local_search;
+        const unsigned local_search_call_gap = 5;
+
+        const double percent_ratio = 0.9;
+        const double conflict_ratio = 0.4;
+        
+        unsigned max_assigned_size;
+        unsigned m_num_assigned_bool, m_num_assigned_arith;
+        // relaxed nlsat
 
         // m_perm:     internal -> external
         // m_inv_perm: external -> internal
@@ -301,6 +322,19 @@ namespace nlsat {
         unsigned               m_learned_deleted;
         // hzw restart
 
+        // local search
+        unsigned m_ls_pair_cm;
+        unsigned m_ls_step;
+        unsigned m_ls_stuck;
+        double m_ls_stuck_ratio;
+        unsigned m_cad_move, m_cad_succeed;
+        unsigned m_poly_bound;
+        // local search
+
+        // relaxed nlsat
+        unsigned               m_solved_by_ls;
+        // relaxed nlsat
+
         unsigned               m_total_vars;
         unsigned               m_bool_vars;
         unsigned               m_arith_vars;
@@ -333,7 +367,10 @@ namespace nlsat {
             m_scope_lvl(0),
             m_lemma(s),
             m_lazy_clause(s),
-            m_lemma_assumptions(m_asm)
+            m_lemma_assumptions(m_asm),
+            // wzh ls
+            m_lsh(s, m_am, m_pm, m_cache, m_ism, m_evaluator, m_assignment, m_clauses, m_atoms, m_dead, m_random_seed, m_ls_step, m_ls_stuck, m_ls_stuck_ratio, m_sub_values)
+            // hzw ls
             {
             updt_params(c.m_params);
             reset_statistics();
@@ -1030,6 +1067,8 @@ namespace nlsat {
             // TODO: how to set m_bk for undo boolean assignment
             // if (m_atoms[b] == nullptr && b < m_bk){
             if(m_atoms[b] == nullptr){
+                SASSERT(m_num_assigned_bool > 0);
+                m_num_assigned_bool--;
                 m_dm.undo_watched_clauses(b, true);
                 m_bk = b;
                 m_search_mode = BOOL;
@@ -1040,6 +1079,8 @@ namespace nlsat {
             DTRACE(tout << "undo arith var assignment for var " << x << std::endl;);
             m_assignment.reset(x);
             m_dm.undo_watched_clauses(x, false);
+            SASSERT(m_num_assigned_arith > 0);
+            m_num_assigned_arith--;
         }
 
         void undo_pick_bool(bool_var b){
@@ -1314,6 +1355,10 @@ namespace nlsat {
             // if literal is pure bool, do watched clause for this bool var
             if(m_atoms[b] == nullptr){
                 m_dm.do_watched_clauses(b, true);
+                m_num_assigned_bool++;
+                if(num_assigned() > max_assigned_size) {
+                    max_assigned_size = num_assigned();
+                }
             }
             TRACE("nlsat_assign", tout << "[debug] bool assign: b" << b << " -> " << m_bvalues[b]  << "\n";);
         }
@@ -1513,6 +1558,11 @@ namespace nlsat {
             m_assignment.set_core(m_xk, w);
             m_dm.do_watched_clauses(m_xk, false);
             save_arith_var_assignment_trail(m_xk);
+            
+            m_num_assigned_arith++;
+            if(num_assigned() > max_assigned_size) {
+                max_assigned_size = num_assigned();
+            }
         }
 
         void check_dynamic_satisfied() {
@@ -1742,6 +1792,9 @@ namespace nlsat {
             m_dm.reset_curr_conflicts();
             m_dm.reset_curr_literal_assign();
 
+            m_num_assigned_bool = 0;
+            m_num_assigned_arith = 0;
+
             while (true) {
                 TRACE("wzh", tout << "[debug] new while true loop\n";
                     display_trails(tout);
@@ -1769,6 +1822,7 @@ namespace nlsat {
                     if(m_search_mode == ARITH){
                         DTRACE(tout << "sort clauses for arith mode\n";);
                         SASSERT(m_xk != null_var);
+                        // TODO: relaxed nlsat, sort clauses by literal conflict times
                         sort_dynamic_clauses(clauses, m_xk);
                     }
                     
@@ -1778,11 +1832,40 @@ namespace nlsat {
                     DTRACE(tout << "start of process hybrid clauses\n";);
                     conflict_clause = process_hybrid_clauses(clauses);
                     DTRACE(tout << "end of process hybrid clauses\n";);
+                    // no conflict
                     if (conflict_clause == nullptr){
+                        // entry of local search
+                        if(m_enable_local_search && can_call_ls && is_promising_branch() && freeze_ls_num < 1) 
+                        {
+                            can_call_ls = false;
+                            freeze_ls_num = local_search_call_gap;
+                            extend_full_assignment();
+                            local_search_result res = m_lsh.local_search();
+                            if(res.first == l_true) {
+                                m_solved_by_ls = 1;
+                                update_ls_bool_assignment(res.second);
+                                // assignment copy(m_assignment);
+                                TRACE("nlsat_ls", std::cout << "[ls] solved by local search\n";
+                                    display_assignment(tout);
+                                );
+                                return l_true;
+                            }
+                            else if(res.first == l_false) {
+                                m_solved_by_ls = 1;
+                                return l_false;
+                            }
+                            else {
+                                m_solved_by_ls = 0;
+                                break;
+                            }
+                        }
                         break;
                     }
-                    if (!resolve(*conflict_clause)) 
-                        return l_false;                    
+
+                    // conflict not resolved
+                    if (!resolve(*conflict_clause)) {
+                        return l_false;              
+                    }      
 
                     // wzh restart
                     if(m_dm.check_restart_requirement()){
@@ -1817,6 +1900,45 @@ namespace nlsat {
                 }
             }
         }
+        
+        // relaxed nlsat
+        lbool convert_bool(bool b) const {
+            return b ? l_true : l_false;
+        }
+
+        void update_ls_bool_assignment(bool_vector const & vec){
+            unsigned idx = 0;
+            for(bool_var b = 0; b < m_atoms.size(); b++){
+                if(m_atoms[b] == nullptr){
+                    m_bvalues[b] = convert_bool(vec[idx]);
+                    idx++;
+                }
+            }
+        }
+
+        unsigned num_assigned() const {
+            return num_assigned_bool() + num_assigned_arith();
+        }
+
+        unsigned num_assigned_bool() const {
+            return m_num_assigned_bool;
+        }
+
+        unsigned num_assigned_arith() const {
+            return m_num_assigned_arith;
+        }
+
+        // TODO: how to define is promising branch
+        bool is_promising_branch() const {
+            return (num_assigned_bool() + num_assigned_arith()) > (int) ((num_bool_vars() + num_vars()) * conflict_ratio)
+            || (num_assigned_bool() + num_assigned_arith()) > (int) (max_assigned_size * percent_ratio);
+        }
+
+
+        void extend_full_assignment() {
+            
+        }
+        // relaxed nlsat
 
 
         lbool search_check() {
@@ -1844,6 +1966,7 @@ namespace nlsat {
                     // restart and continue search
                     m_restarts++;
                     m_dm.minimize_learned();
+                    freeze_ls_num--;
                     continue;
                 }
 
@@ -1908,6 +2031,13 @@ namespace nlsat {
                 if (!simplify()) 
                     return l_false;
             }
+
+            if(m_enable_local_search) {
+                m_lsh.set_var_num(num_vars());
+                freeze_ls_num = 0;
+            }
+
+            max_assigned_size = 0;
 
             init_pure_bool();
             m_dm.set_var_num(num_vars());
@@ -3324,6 +3454,42 @@ namespace nlsat {
             return true;
         }
 
+        substitute_value_vector m_sub_values;
+
+        bool local_search_simplify() {
+            m_sub_values.reset();
+            polynomial_ref p(m_pm), q(m_pm);
+            var v;
+            init_var_signs();
+            SASSERT(m_learned.empty());
+            bool change = true;
+            while (change) {
+                change = false;
+                for (clause* c : m_clauses) {
+                    if (solve_var(*c, v, p, q)) {
+                        LSTRACE(tout << "loop clause in local search simplify\n";
+                            display(tout, *c); tout << std::endl;
+                        );
+                        q = -q;
+                        m_sub_values.push_back(substitute_value(v, p, q));
+                        // v = q / p
+                        TRACE("nlsat", tout << "p: " << p << "\nq: " << q << "\n x" << v << "\n";);
+                        m_patch_var.push_back(v);
+                        m_patch_num.push_back(q);
+                        m_patch_denom.push_back(p);
+                        // we do not delete simplify clauses in ls_simplify
+                        // del_clause(c, m_clauses);
+                        if (!substitute_var(v, p, q))
+                            return false;
+                        TRACE("nlsat", display(tout << "simplified\n"););
+                        change = true;
+                        break;
+                    }
+                }
+            }
+            return true;
+        }
+
         void fix_patch() {
             for (unsigned i = m_patch_var.size(); i-- > 0; ) {
                 var v = m_patch_var[i];
@@ -4283,6 +4449,12 @@ namespace nlsat {
             }
             return out;
         }
+
+        // wzh ls
+        std::ostream & display_var(std::ostream & out, var v) const {
+            return m_display_var(out, v);
+        }
+        // hzw ls
     };
     
     solver::solver(reslimit& rlim, params_ref const & p, bool incremental) {
@@ -4470,13 +4642,13 @@ namespace nlsat {
         return m_imp->display(out);
     }
 
-    std::ostream& solver::display(std::ostream & out, literal l) const {
+    std::ostream& solver::display_literal(std::ostream & out, literal l) const {
         return m_imp->display(out, l);
     }
 
     std::ostream& solver::display(std::ostream & out, unsigned n, literal const* ls) const {
         for (unsigned i = 0; i < n; ++i) {
-            display(out, ls[i]);
+            display_literal(out, ls[i]);
             out << ";  ";
         }
         return out;
@@ -4553,4 +4725,14 @@ namespace nlsat {
         return m_imp->display_bool_assignment(out);
     }
     // dnlsat
+
+    // wzh ls
+    std::ostream& solver::display_clause(std::ostream & out, clause const & c) const {
+        return m_imp->display(out, c);
+    }
+
+    std::ostream & solver::display_var(std::ostream & out, var v) const {
+        return m_imp->display_var(out, v);
+    }
+    // hzw ls
 };

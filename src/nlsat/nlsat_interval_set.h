@@ -82,6 +82,21 @@ namespace nlsat {
         interval_set * mk_full();
         bool contains_zero(interval_set const * s) const;
         bool interval_contains_zero(interval inter) const;
+
+        bool peek_in_complement_zero(interval_set const * s, anum & w);
+        bool peek_in_complement_lower_int(interval_set const * s, anum & w);
+        bool peek_in_complement_lower_far(interval_set const * s, anum & w);
+        bool peek_in_complement_upper_int(interval_set const * s, anum & w);
+        bool peek_in_complement_upper_far(interval_set const * s, anum & w);
+        void peek_in_complement_middle(interval_set const * s, anum_vector & vec);
+        void peek_in_complement_threshold(interval_set const * s, anum_vector & vec);
+        void peek_in_complement_threshold_integer(interval_set const * s, anum_vector & vec);
+
+        void peek_in_complement_heuristic(interval_set const * s, anum_vector & vec);
+        void peek_in_complement_heuristic_level1(interval_set const * s, anum_vector & vec);
+        void peek_in_complement_heuristic_level2(interval_set const * s, anum_vector & vec);
+
+        interval_set * mk_bound_interval(anum const & w, poly_bound_state s);
         // hzw ls
         
         /**

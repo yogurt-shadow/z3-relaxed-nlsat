@@ -785,6 +785,88 @@ namespace nlsat {
         return mk_complement(mk_union(mk_complement(s1), mk_complement(s2)));
     }
 
+    interval_set * interval_set_manager::mk_bound_interval(anum const & w, poly_bound_state s) {
+        interval_buffer result;
+        // [a, a]
+        if(s == EQ){
+            interval inter;
+            inter.m_lower_inf = false;
+            inter.m_upper_inf = false;
+            inter.m_lower_open = false;
+            inter.m_upper_open = false;
+            m_am.set(inter.m_lower, w);
+            m_am.set(inter.m_upper, w);
+            push_back(m_am, result, inter);
+        }
+        // (-oo, a) (a, +oo)
+        else if(s == NEQ){
+            interval inter1, inter2;
+            inter1.m_lower_inf = true;
+            inter1.m_lower_open = true;
+            m_am.set(inter1.m_lower, m_zero);
+            inter1.m_upper_inf = false;
+            inter1.m_upper_open = true;
+            m_am.set(inter1.m_upper, w);
+            push_back(m_am, result, inter1);
+
+            inter2.m_lower_inf = false;
+            inter2.m_lower_open = true;
+            m_am.set(inter2.m_lower, w);
+            inter2.m_upper_inf = true;
+            inter2.m_upper_open = true;
+            m_am.set(inter2.m_upper, m_zero);
+            push_back(m_am, result, inter2);
+        }
+        // (a, +oo)
+        else if(s == GT){
+            interval inter;
+            inter.m_lower_inf = false;
+            inter.m_lower_open = true;
+            m_am.set(inter.m_lower, w);
+            inter.m_upper_inf = true;
+            inter.m_upper_open = true;
+            m_am.set(inter.m_upper, m_zero);
+            push_back(m_am, result, inter);
+        }
+        // [a, +oo)
+        else if(s == GE){
+            interval inter;
+            inter.m_lower_inf = false;
+            inter.m_lower_open = false;
+            m_am.set(inter.m_lower, w);
+            inter.m_upper_inf = true;
+            inter.m_upper_open = true;
+            m_am.set(inter.m_upper, m_zero);
+            push_back(m_am, result, inter);
+        }
+        // (-oo, a)
+        else if(s == LT){
+            interval inter;
+            inter.m_lower_inf = true;
+            inter.m_lower_open = true;
+            m_am.set(inter.m_lower, m_zero);
+            inter.m_upper_inf = false;
+            inter.m_upper_open = true;
+            m_am.set(inter.m_upper, w);
+            push_back(m_am, result, inter);
+        }
+        // (-oo, a]
+        else if(s == LE){
+            interval inter;
+            inter.m_lower_inf = true;
+            inter.m_lower_open = true;
+            m_am.set(inter.m_lower, m_zero);
+            inter.m_upper_inf = false;
+            inter.m_upper_open = false;
+            m_am.set(inter.m_upper, w);
+            push_back(m_am, result, inter);
+        }
+        else {
+            UNREACHABLE();
+        }
+        return mk_interval(m_allocator, result, false);
+    }
+
     bool interval_set_manager::contains_zero(interval_set const * s) const {
         if(s == nullptr){
             return false;
@@ -809,6 +891,401 @@ namespace nlsat {
         bool left = inter.m_lower_inf || m_am.is_neg(inter.m_lower);
         bool right = inter.m_upper_inf || m_am.is_pos(inter.m_upper);
         return left && right;
+    }
+
+    void interval_set_manager::peek_in_complement_heuristic_level1(interval_set const * s, anum_vector & vec){
+        vec.reset();
+        anum_vector threshold_value;
+        peek_in_complement_threshold(s, threshold_value);
+        for(auto ele: threshold_value){
+            vec.push_back(ele);
+        }
+    }
+
+    void interval_set_manager::peek_in_complement_heuristic_level2(interval_set const * s, anum_vector & vec){
+        vec.reset();
+        anum_vector threshold_integer_value;
+        peek_in_complement_threshold_integer(s, threshold_integer_value);
+        for(auto ele: threshold_integer_value){
+            vec.push_back(ele);
+        }
+    }
+
+    void interval_set_manager::peek_in_complement_heuristic(interval_set const * s, anum_vector & vec){
+        TRACE("nlsat_ls", tout << "show set of insertion:\n";
+            display(tout, s);
+        );
+        SASSERT(!is_full(s));
+        vec.reset();
+        // z3 default
+        anum w1;
+        peek_in_complement(s, false, w1, true);
+        vec.push_back(w1);
+
+        // // zero
+        // anum w2;
+        // if(peek_in_complement_zero(s, w2)){
+        //     SASSERT(m_am.is_zero(w2));
+        //     vec.push_back(w2);
+        // }
+
+        // // integer lower bound
+        // anum lower_w;
+        // if(peek_in_complement_lower_int(s, lower_w)){
+        //     vec.push_back(lower_w);
+        // }
+
+        // // integer upper bound
+        // anum upper_w;
+        // if(peek_in_complement_upper_int(s, upper_w)){
+        //     vec.push_back(upper_w);
+        // }
+
+        // // far lower
+        // anum lower_far;
+        // if(peek_in_complement_lower_far(s, lower_far)){
+        //     vec.push_back(lower_far);
+        // }
+
+        // // far upper
+        // anum upper_far;
+        // if(peek_in_complement_upper_far(s, upper_far)){
+        //     vec.push_back(upper_far);
+        // }
+        
+        // // middle point
+        // anum_vector middle_w;
+        // peek_in_complement_middle(s, middle_w);
+        // for(auto ele: middle_w){
+        //     vec.push_back(ele);
+        // }
+
+        // // threshold value
+        anum_vector threshold_value;
+        peek_in_complement_threshold(s, threshold_value);
+        for(auto ele: threshold_value){
+            vec.push_back(ele);
+        }
+
+        anum_vector threshold_integer_value;
+        peek_in_complement_threshold_integer(s, threshold_integer_value);
+        for(auto ele: threshold_integer_value) {
+            vec.push_back(ele);
+        }
+        TRACE("nlsat_ls", tout << "show insertion sample values:\n";
+            for(auto ele: vec) {
+                m_am.display(tout, ele); tout << " ";
+            }
+            tout << std::endl;
+        );
+    }
+
+    void interval_set_manager::peek_in_complement_threshold_integer(interval_set const * s, anum_vector & vec) {
+        vec.reset();
+        if(s == nullptr || s->m_num_intervals == 0){
+            return;
+        }
+        unsigned sz = s->m_num_intervals;
+        anum lower_w, upper_w;
+        // first interval's lower bound
+        if(!s->m_intervals[0].m_lower_inf) {
+            // (
+            if(s->m_intervals[0].m_lower_open) {
+                if(m_am.is_int(s->m_intervals[0].m_lower)){
+                    m_am.set(lower_w, s->m_intervals[0].m_lower);
+                    vec.push_back(lower_w);
+                }
+                else {
+                    m_am.int_lt(s->m_intervals[0].m_lower, lower_w);
+                    vec.push_back(lower_w);
+                }
+            }
+            // [
+            else {
+                if(m_am.is_int(s->m_intervals[0].m_lower)){
+                    m_am.sub(s->m_intervals[0].m_lower, m_one, lower_w);
+                    vec.push_back(lower_w);
+                }
+                else {
+                    m_am.int_lt(s->m_intervals[0].m_lower, lower_w);
+                    vec.push_back(lower_w);
+                }
+            }
+        }
+        // last interval's upper bound
+        if(!s->m_intervals[sz - 1].m_upper_inf) {
+            // )
+            if(s->m_intervals[sz - 1].m_upper_open) {
+                if(m_am.is_int(s->m_intervals[sz - 1].m_upper)){
+                    m_am.set(upper_w, s->m_intervals[sz - 1].m_upper);
+                    vec.push_back(upper_w);
+                }
+                else {
+                    m_am.int_gt(s->m_intervals[sz - 1].m_upper, upper_w);
+                    vec.push_back(upper_w);
+                }
+            }
+            // ]
+            else {
+                if(m_am.is_int(s->m_intervals[sz - 1].m_upper)) {
+                    m_am.add(s->m_intervals[sz - 1].m_upper, m_one, upper_w);
+                    vec.push_back(upper_w);
+                }
+                else {
+                    m_am.int_gt(s->m_intervals[sz - 1].m_upper, upper_w);
+                    vec.push_back(upper_w);
+                }
+            }
+        }
+        // middle interval's threshold integer value
+        for(unsigned i = 0; i < sz - 1; i++) {
+            interval lower = s->m_intervals[i], upper = s->m_intervals[i + 1];
+            int com = m_am.compare(lower.m_upper, upper.m_lower);
+            if(com == 0) {
+                if(lower.m_upper_open && upper.m_lower_open) {
+                    if(m_am.is_int(lower.m_upper)) {
+                        anum w;
+                        m_am.set(w, lower.m_upper);
+                        vec.push_back(w);
+                    }
+                }
+            }
+            else {
+                SASSERT(com < 0);
+                anum w1, w2;
+                // w1 means threshold of lower interval's upper
+                // w2 means threshold of upper interval's lower\
+                
+                // lower part
+                // )
+                if(lower.m_upper_open) {
+                    if(m_am.is_int(lower.m_upper)) {
+                        m_am.set(w1, lower.m_upper);
+                        vec.push_back(w1);
+                    }
+                    else {
+                        m_am.int_gt(lower.m_upper, w1);
+                        if(m_am.lt(w1, upper.m_lower)) {
+                            vec.push_back(w1);
+                        }
+                    }
+                }
+                // ]
+                else {
+                    if(m_am.is_int(lower.m_upper)) {
+                        m_am.add(lower.m_upper, m_one, w1);
+                        if(m_am.lt(w1, upper.m_lower)) {
+                            vec.push_back(w1);
+                        }
+                    }
+                    else {
+                        m_am.int_gt(lower.m_upper, w1);
+                        if(m_am.lt(w1, upper.m_lower)) {
+                            vec.push_back(w1);
+                        }
+                    }
+                }
+                // upper part
+                // (
+                if(upper.m_lower_open) {
+                    if(m_am.is_int(upper.m_lower)) {
+                        m_am.set(w2, upper.m_lower);
+                        vec.push_back(w2);
+                    }
+                    else {
+                        m_am.int_lt(upper.m_lower, w2);
+                        if(m_am.gt(w2, lower.m_upper)) {
+                            vec.push_back(w2);
+                        }
+                    }
+                }
+                // [
+                else {
+                    if(m_am.is_int(upper.m_lower)) {
+                        m_am.sub(upper.m_lower, m_one, w2);
+                        if(m_am.gt(w2, lower.m_upper)) {
+                            vec.push_back(w2);
+                        }
+                    }
+                    else {
+                        m_am.int_lt(upper.m_lower, w2);
+                        if(m_am.gt(w2, lower.m_upper)) {
+                            vec.push_back(w2);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void interval_set_manager::peek_in_complement_threshold(interval_set const * s, anum_vector & vec){
+        // TRACE("nlsat_ls", tout << "show set for threshold\n";
+        //     display(tout, s); tout << std::endl;
+        // );
+        vec.reset();
+        if(s == nullptr || s->m_num_intervals == 0){
+            return;
+        }
+        anum lower_w, upper_w;
+        // first interval's lower threshold
+        if(!s->m_intervals[0].m_lower_inf){
+            // (
+            if(s->m_intervals[0].m_lower_open){
+                m_am.set(lower_w, s->m_intervals[0].m_lower);
+                vec.push_back(lower_w);
+            }
+            // [
+            else {
+                m_am.sub(s->m_intervals[0].m_lower, m_min, lower_w);
+                vec.push_back(lower_w);
+            }
+        }
+        // last interval's upper threshold
+        if(!s->m_intervals[s->m_num_intervals - 1].m_upper_inf){
+            // )
+            if(s->m_intervals[s->m_num_intervals - 1].m_upper_open){
+                m_am.set(upper_w, s->m_intervals[s->m_num_intervals - 1].m_upper);
+                vec.push_back(upper_w);
+            }
+            // ]
+            else {
+                m_am.add(s->m_intervals[s->m_num_intervals - 1].m_upper, m_min, upper_w);
+                vec.push_back(upper_w);
+            }
+        }
+        // middle interval's threshold
+        for(unsigned i = 0; i < s->m_num_intervals - 1; i++){
+            interval lower = s->m_intervals[i], upper = s->m_intervals[i + 1];
+            int com = m_am.compare(lower.m_upper, upper.m_lower);
+            if(com == 0){
+                if(lower.m_upper_open && upper.m_lower_open) {
+                    anum w;
+                    m_am.set(w, lower.m_upper);
+                    vec.push_back(w);
+                }
+            }
+            else {
+                SASSERT(com < 0);
+                anum w1, w2;
+                // )
+                if(lower.m_upper_open){
+                    m_am.set(w1, lower.m_upper);
+                    vec.push_back(w1);
+                }
+                else {
+                    // w1 = lower_upper + min
+                    m_am.add(lower.m_upper, m_min, w1);
+                    if(m_am.lt(w1, upper.m_lower)){
+                        vec.push_back(w1);
+                    }
+                }
+                // (
+                if(upper.m_lower_open){
+                    m_am.set(w2, upper.m_lower);
+                    vec.push_back(w2);
+                }
+                else {
+                    // w2 = upper_lower - min
+                    m_am.sub(upper.m_lower, m_min, w2);
+                    if(m_am.gt(w2, lower.m_upper)){
+                        vec.push_back(w2);
+                    }
+                }
+            }
+        }
+    }
+
+    void interval_set_manager::peek_in_complement_middle(interval_set const * s, anum_vector & vec){
+        vec.reset();
+        if(s == nullptr || s->m_num_intervals < 2){
+            return;
+        }
+        for(unsigned i = 0; i < s->m_num_intervals - 1; i++){
+            interval lower = s->m_intervals[i], upper = s->m_intervals[i + 1];
+            anum w;
+            // equal
+            int com = m_am.compare(lower.m_upper, upper.m_lower);
+            if(com == 0 && lower.m_upper_open && upper.m_lower_open){
+                m_am.set(w, lower.m_upper);
+                vec.push_back(w);
+            }
+            // gap
+            else if(com < 0){
+                m_am.select(lower.m_upper, upper.m_lower, w);
+                // make sure in the middle
+                if(m_am.gt(w, lower.m_upper) && m_am.lt(w, upper.m_lower)){
+                    vec.push_back(w);
+                }
+            }
+        }
+    }
+
+    bool interval_set_manager::peek_in_complement_lower_int(interval_set const * s, anum & w){
+        if(s == nullptr || s->m_num_intervals == 0){
+            return false;
+        }
+        interval curr = s->m_intervals[0];
+        if(curr.m_lower_inf){
+            return false;
+        }
+        // w <= lower
+        m_am.int_lt(curr.m_lower, w);
+        // [lower, 
+        if(m_am.eq(curr.m_lower, w) && !curr.m_lower_open){
+            // w = w - 1
+            m_am.sub(w, m_one, w);
+        }
+        return true;
+    }
+
+    bool interval_set_manager::peek_in_complement_lower_far(interval_set const * s, anum & w){
+        if(s == nullptr || s->m_num_intervals == 0){
+            return false;
+        }
+        interval curr = s->m_intervals[0];
+        if(!curr.m_lower_inf && m_am.lt(m_neg_max, curr.m_lower)){
+            m_am.set(w, m_neg_max);
+            return true;
+        }
+        return false;
+    }
+
+    bool interval_set_manager::peek_in_complement_upper_int(interval_set const * s, anum & w){
+        if(s == nullptr || s->m_num_intervals == 0){
+            return false;
+        }
+        interval curr = s->m_intervals[s->m_num_intervals - 1];
+        if(curr.m_upper_inf){
+            return false;
+        }
+        // w >= upper
+        m_am.int_gt(curr.m_upper, w);
+        // , upper]
+        if(m_am.eq(curr.m_upper, w) && !curr.m_upper_open){
+            // w = w + 1
+            m_am.add(w, m_one, w);
+        }
+        return true;
+    }
+
+    bool interval_set_manager::peek_in_complement_upper_far(interval_set const * s, anum & w){
+        if(s == nullptr || s->m_num_intervals == 0){
+            return false;
+        }
+        interval curr = s->m_intervals[s->m_num_intervals - 1];
+        if(!curr.m_upper_inf && m_am.gt(m_max, curr.m_upper)){
+            m_am.set(w, m_max);
+            return true;
+        }
+        return false;
+    }
+
+    bool interval_set_manager::peek_in_complement_zero(interval_set const * s, anum & w){
+        if(!contains_zero(s)){
+            m_am.set(w, 0);
+            return true;
+        }
+        return false;
     }
 
     void interval_set_manager::set_const_anum(){
@@ -909,4 +1386,5 @@ namespace nlsat {
             out << "*";
         return out;
     }
+
 };
