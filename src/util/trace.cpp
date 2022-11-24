@@ -42,7 +42,7 @@ bool is_threaded() {
 
 // wzh tout
 // std::ofstream tout(".z3-trace"); 
-std::ofstream tout("/home/wangzh/traces/z3-dnlsat.z3-trace"); 
+std::ofstream tout("/home/wangzh/traces/z3-relaxed-nlsat.z3-trace"); 
 
 static bool g_enable_all_trace_tags = false;
 static str_hashtable* g_enabled_trace_tags = nullptr;

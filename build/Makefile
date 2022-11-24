@@ -1146,19 +1146,19 @@ nlsat/nlsat_clause.h.node: ../src/nlsat/nlsat_clause.h util/vector.h.node nlsat/
 nlsat/nlsat_clause$(OBJ_EXT): ../src/nlsat/nlsat_clause.cpp nlsat/nlsat_clause.h.node
 	@echo src/nlsat/nlsat_clause.cpp
 	@$(CXX) $(CXXFLAGS) $(includes_15) $(CXX_OUT_FLAG)nlsat/nlsat_clause$(OBJ_EXT) ../src/nlsat/nlsat_clause.cpp
-nlsat/nlsat_solver.h.node: ../src/nlsat/nlsat_solver.h util/params.h.node util/rlimit.h.node util/statistics.h.node nlsat/nlsat_types.h.node
-	@echo done > nlsat/nlsat_solver.h.node
+nlsat/nlsat_interval_set.h.node: ../src/nlsat/nlsat_interval_set.h math/polynomial/algebraic_numbers.h.node nlsat/nlsat_types.h.node
+	@echo done > nlsat/nlsat_interval_set.h.node
 nlsat/nlsat_assignment.h.node: ../src/nlsat/nlsat_assignment.h math/polynomial/algebraic_numbers.h.node nlsat/nlsat_types.h.node
 	@echo done > nlsat/nlsat_assignment.h.node
-nlsat/nlsat_dynamic.h.node: ../src/nlsat/nlsat_dynamic.h nlsat/nlsat_solver.h.node util/hashtable.h.node nlsat/nlsat_assignment.h.node nlsat/nlsat_clause.h.node nlsat/nlsat_types.h.node
+nlsat/nlsat_evaluator.h.node: ../src/nlsat/nlsat_evaluator.h nlsat/nlsat_interval_set.h.node nlsat/nlsat_assignment.h.node nlsat/nlsat_types.h.node
+	@echo done > nlsat/nlsat_evaluator.h.node
+nlsat/nlsat_solver.h.node: ../src/nlsat/nlsat_solver.h util/params.h.node util/rlimit.h.node util/statistics.h.node nlsat/nlsat_types.h.node
+	@echo done > nlsat/nlsat_solver.h.node
+nlsat/nlsat_dynamic.h.node: ../src/nlsat/nlsat_dynamic.h nlsat/nlsat_evaluator.h.node util/hashtable.h.node nlsat/nlsat_solver.h.node nlsat/nlsat_interval_set.h.node nlsat/nlsat_clause.h.node nlsat/nlsat_assignment.h.node nlsat/nlsat_types.h.node
 	@echo done > nlsat/nlsat_dynamic.h.node
 nlsat/nlsat_dynamic$(OBJ_EXT): ../src/nlsat/nlsat_dynamic.cpp nlsat/nlsat_dynamic.h.node util/heap.h.node
 	@echo src/nlsat/nlsat_dynamic.cpp
 	@$(CXX) $(CXXFLAGS) $(includes_15) $(CXX_OUT_FLAG)nlsat/nlsat_dynamic$(OBJ_EXT) ../src/nlsat/nlsat_dynamic.cpp
-nlsat/nlsat_interval_set.h.node: ../src/nlsat/nlsat_interval_set.h nlsat/nlsat_types.h.node
-	@echo done > nlsat/nlsat_interval_set.h.node
-nlsat/nlsat_evaluator.h.node: ../src/nlsat/nlsat_evaluator.h nlsat/nlsat_interval_set.h.node nlsat/nlsat_assignment.h.node nlsat/nlsat_types.h.node
-	@echo done > nlsat/nlsat_evaluator.h.node
 nlsat/nlsat_evaluator$(OBJ_EXT): ../src/nlsat/nlsat_evaluator.cpp nlsat/nlsat_solver.h.node nlsat/nlsat_evaluator.h.node
 	@echo src/nlsat/nlsat_evaluator.cpp
 	@$(CXX) $(CXXFLAGS) $(includes_15) $(CXX_OUT_FLAG)nlsat/nlsat_evaluator$(OBJ_EXT) ../src/nlsat/nlsat_evaluator.cpp
@@ -1169,21 +1169,26 @@ nlsat/nlsat_explain.h.node: ../src/nlsat/nlsat_explain.h nlsat/nlsat_solver.h.no
 nlsat/nlsat_explain$(OBJ_EXT): ../src/nlsat/nlsat_explain.cpp nlsat/nlsat_evaluator.h.node nlsat/nlsat_explain.h.node math/polynomial/algebraic_numbers.h.node nlsat/nlsat_assignment.h.node util/ref_buffer.h.node
 	@echo src/nlsat/nlsat_explain.cpp
 	@$(CXX) $(CXXFLAGS) $(includes_15) $(CXX_OUT_FLAG)nlsat/nlsat_explain$(OBJ_EXT) ../src/nlsat/nlsat_explain.cpp
-nlsat/nlsat_interval_set$(OBJ_EXT): ../src/nlsat/nlsat_interval_set.cpp util/buffer.h.node nlsat/nlsat_interval_set.h.node math/polynomial/algebraic_numbers.h.node
+nlsat/nlsat_interval_set$(OBJ_EXT): ../src/nlsat/nlsat_interval_set.cpp util/buffer.h.node nlsat/nlsat_interval_set.h.node
 	@echo src/nlsat/nlsat_interval_set.cpp
 	@$(CXX) $(CXXFLAGS) $(includes_15) $(CXX_OUT_FLAG)nlsat/nlsat_interval_set$(OBJ_EXT) ../src/nlsat/nlsat_interval_set.cpp
+nlsat/nlsat_local_search.h.node: ../src/nlsat/nlsat_local_search.h nlsat/nlsat_scoped_literal_vector.h.node nlsat/nlsat_evaluator.h.node util/hashtable.h.node math/polynomial/algebraic_numbers.h.node nlsat/nlsat_interval_set.h.node nlsat/nlsat_clause.h.node math/polynomial/polynomial_cache.h.node nlsat/nlsat_assignment.h.node
+	@echo done > nlsat/nlsat_local_search.h.node
+nlsat/nlsat_local_search$(OBJ_EXT): ../src/nlsat/nlsat_local_search.cpp util/heap.h.node nlsat/nlsat_local_search.h.node
+	@echo src/nlsat/nlsat_local_search.cpp
+	@$(CXX) $(CXXFLAGS) $(includes_15) $(CXX_OUT_FLAG)nlsat/nlsat_local_search$(OBJ_EXT) ../src/nlsat/nlsat_local_search.cpp
 nlsat/nlsat_justification.h.node: ../src/nlsat/nlsat_justification.h util/tptr.h.node nlsat/nlsat_types.h.node
 	@echo done > nlsat/nlsat_justification.h.node
 nlsat/nlsat_params.hpp.node: ../src/nlsat/nlsat_params.hpp util/params.h.node util/gparams.h.node
 	@echo done > nlsat/nlsat_params.hpp.node
-nlsat/nlsat_solver$(OBJ_EXT): ../src/nlsat/nlsat_solver.cpp nlsat/nlsat_justification.h.node nlsat/nlsat_evaluator.h.node nlsat/nlsat_explain.h.node math/polynomial/polynomial_cache.h.node util/permutation.h.node nlsat/nlsat_dynamic.h.node util/id_gen.h.node nlsat/nlsat_solver.h.node util/z3_exception.h.node util/map.h.node nlsat/nlsat_clause.h.node util/chashtable.h.node math/polynomial/algebraic_numbers.h.node util/dependency.h.node nlsat/nlsat_params.hpp.node nlsat/nlsat_assignment.h.node
+nlsat/nlsat_solver$(OBJ_EXT): ../src/nlsat/nlsat_solver.cpp nlsat/nlsat_justification.h.node nlsat/nlsat_evaluator.h.node nlsat/nlsat_explain.h.node math/polynomial/polynomial_cache.h.node util/permutation.h.node nlsat/nlsat_dynamic.h.node util/id_gen.h.node nlsat/nlsat_local_search.h.node nlsat/nlsat_solver.h.node util/z3_exception.h.node util/map.h.node nlsat/nlsat_clause.h.node util/chashtable.h.node math/polynomial/algebraic_numbers.h.node util/dependency.h.node nlsat/nlsat_params.hpp.node nlsat/nlsat_assignment.h.node
 	@echo src/nlsat/nlsat_solver.cpp
 	@$(CXX) $(CXXFLAGS) $(includes_15) $(CXX_OUT_FLAG)nlsat/nlsat_solver$(OBJ_EXT) ../src/nlsat/nlsat_solver.cpp
 nlsat/nlsat_types$(OBJ_EXT): ../src/nlsat/nlsat_types.cpp util/hash.h.node math/polynomial/polynomial.h.node util/debug.h.node nlsat/nlsat_types.h.node
 	@echo src/nlsat/nlsat_types.cpp
 	@$(CXX) $(CXXFLAGS) $(includes_15) $(CXX_OUT_FLAG)nlsat/nlsat_types$(OBJ_EXT) ../src/nlsat/nlsat_types.cpp
-nlsat/nlsat$(LIB_EXT): nlsat/nlsat_clause$(OBJ_EXT) nlsat/nlsat_dynamic$(OBJ_EXT) nlsat/nlsat_evaluator$(OBJ_EXT) nlsat/nlsat_explain$(OBJ_EXT) nlsat/nlsat_interval_set$(OBJ_EXT) nlsat/nlsat_solver$(OBJ_EXT) nlsat/nlsat_types$(OBJ_EXT)
-	@$(AR) $(AR_FLAGS) $(AR_OUTFLAG)nlsat/nlsat$(LIB_EXT) nlsat/nlsat_clause$(OBJ_EXT) nlsat/nlsat_dynamic$(OBJ_EXT) nlsat/nlsat_evaluator$(OBJ_EXT) nlsat/nlsat_explain$(OBJ_EXT) nlsat/nlsat_interval_set$(OBJ_EXT) nlsat/nlsat_solver$(OBJ_EXT) nlsat/nlsat_types$(OBJ_EXT)
+nlsat/nlsat$(LIB_EXT): nlsat/nlsat_clause$(OBJ_EXT) nlsat/nlsat_dynamic$(OBJ_EXT) nlsat/nlsat_evaluator$(OBJ_EXT) nlsat/nlsat_explain$(OBJ_EXT) nlsat/nlsat_interval_set$(OBJ_EXT) nlsat/nlsat_local_search$(OBJ_EXT) nlsat/nlsat_solver$(OBJ_EXT) nlsat/nlsat_types$(OBJ_EXT)
+	@$(AR) $(AR_FLAGS) $(AR_OUTFLAG)nlsat/nlsat$(LIB_EXT) nlsat/nlsat_clause$(OBJ_EXT) nlsat/nlsat_dynamic$(OBJ_EXT) nlsat/nlsat_evaluator$(OBJ_EXT) nlsat/nlsat_explain$(OBJ_EXT) nlsat/nlsat_interval_set$(OBJ_EXT) nlsat/nlsat_local_search$(OBJ_EXT) nlsat/nlsat_solver$(OBJ_EXT) nlsat/nlsat_types$(OBJ_EXT)
 nlsat: nlsat/nlsat$(LIB_EXT)
 
 includes_16 = -I../src/util -I../src/nlsat -I../src/math/polynomial -I../src/sat -I../src/math/dd -I../src/math/interval -I../src/math/grobner -I../src/ast -I../src/math/simplex -I../src/smt/params -I../src/params -I../src

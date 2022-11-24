@@ -3,7 +3,6 @@
 #include "nlsat/nlsat_types.h"
 #include "nlsat/nlsat_clause.h"
 #include "nlsat/nlsat_assignment.h"
-#include "util/hashtable.h"
 #include "nlsat/nlsat_interval_set.h"
 #include "nlsat/nlsat_evaluator.h"
 #include "nlsat/nlsat_solver.h"
@@ -50,26 +49,6 @@ namespace nlsat {
     using hybrid_var_vector = var_vector;
     using interval_set_vector = ptr_vector<interval_set>;
     using lbool_vector = vector<lbool>;
-
-    // hastable for var
-    struct var_hash {
-        unsigned operator()(var x) const {
-            return x;
-        }
-    };
-
-    struct var_eq {
-        bool operator()(var x, var y) const {
-            return x == y;
-        }
-    };
-
-    using var_table = hashtable<var, var_hash, var_eq>;
-    using bool_var_table = var_table;
-    using hybrid_var_table = var_table;
-    using hybrid_var_pair = std::pair<var, var>;
-    using var_vector_vector = vector<var_vector>;
-    using var_table_vector = vector<var_table>;
 
     class dynamic_atom {
     private:
@@ -211,6 +190,8 @@ namespace nlsat {
         bool finish_status() const;
 
         bool_var get_unit_bool_var() const;
+
+        var get_unit_arith_var() const;
 
         std::ostream & display_assigned_vars(std::ostream & out) const;
         std::ostream & display_var_stage(std::ostream &) const;

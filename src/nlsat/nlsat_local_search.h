@@ -24,7 +24,6 @@
 #include "nlsat/nlsat_interval_set.h"
 #include "nlsat/nlsat_evaluator.h"
 #include "nlsat/nlsat_interval_set.h"
-#include "util/hashtable.h"
 
 #define LSTRACE(CODE) TRACE("nlsat_ls", CODE)
 #define LSCTRACE(COND, CODE) CTRACE("nlsat_ls", COND, CODE)
@@ -43,19 +42,19 @@ namespace nlsat {
      */
     typedef std::pair<lbool, bool_vector> local_search_result;
 
-    struct var_hash {
-        unsigned operator()(var v) const {
-            return v;
-        }
-    };
+    // struct var_hash {
+    //     unsigned operator()(var v) const {
+    //         return v;
+    //     }
+    // };
 
-    struct var_eq {
-        bool operator()(var x, var y) const {
-            return x == y;
-        }
-    };
+    // struct var_eq {
+    //     bool operator()(var x, var y) const {
+    //         return x == y;
+    //     }
+    // };
 
-    typedef hashtable<var, var_hash, var_eq> var_table;
+    // typedef hashtable<var, var_hash, var_eq> var_table;
 
     class anum_table {
     private:
@@ -471,9 +470,8 @@ namespace nlsat {
         imp * m_imp;
     public:
         ls_helper(solver & s, anum_manager & am, pmanager & pm, polynomial::cache & cache, interval_set_manager & ism, evaluator & ev, 
-                         assignment & ass, clause_vector const & cls, atom_vector const & ats, bool_vector const & dead, unsigned seed, unsigned & step, 
-                         unsigned & stuck, double & ratio, 
-                         substitute_value_vector const & vec);
+                         assignment & ass, svector<lbool> const & bvalues, clause_vector const & cls, atom_vector const & ats, bool_vector const & dead, unsigned seed, unsigned & step, 
+                         unsigned & stuck, unsigned & restart, double & ratio, substitute_value_vector const & vec);
 
         ~ls_helper();
 

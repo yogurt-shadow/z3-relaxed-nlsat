@@ -40,7 +40,7 @@ namespace nlsat {
          * Delta: 1/max
          * Max: INT_MAX
          */
-        anum m_zero, m_one, m_two, m_min, m_max;
+        anum m_zero, m_one, m_two, m_min, m_max, m_hundred;
 
         /**
          * Arith Var
@@ -160,6 +160,7 @@ namespace nlsat {
         var_vector m_nra_operation_literal_index_level2;
 
         unsigned & m_stuck;
+        unsigned & m_restart;
         double & m_stuck_ratio;
         const bool use_factor = true;
         polynomial_ref_vector temp_factors;
@@ -168,21 +169,22 @@ namespace nlsat {
 
         // relaxed nlsat
         var_vector m_var_in_conflict_step;
+        svector<lbool> const & m_bvalues;
         // TODO: literal conflict step
 
         // relaxed nlsat
         
 
         imp(solver & s, anum_manager & am, pmanager & pm, polynomial::cache & cache, interval_set_manager & ism, evaluator & ev, 
-                         assignment & ass, clause_vector const & cls, atom_vector const & ats, bool_vector const & dead, unsigned seed,
-                         unsigned & step, unsigned & stuck, double & ratio, substitute_value_vector const & vec)
+                         assignment & ass, svector<lbool> const & bvalues, clause_vector const & cls, atom_vector const & ats, bool_vector const & dead, unsigned seed,
+                         unsigned & step, unsigned & stuck, unsigned & restart, double & ratio, substitute_value_vector const & vec)
         : m_am(am), m_pm(pm), m_ism(ism), m_evaluator(ev), m_assignment(ass), m_clauses(cls), 
         m_atoms(ats), m_rand_seed(seed), m_solver(s), m_cc_mode(-1), is_bool_search(false),
         m_time_label(1), m_nra_operation_table_level1(m_am, m_nra_operation_index_level1, m_nra_operation_value_level1),
-        m_step(step), m_stuck(stuck), m_stuck_ratio(ratio), m_cache(cache), 
+        m_step(step), m_stuck(stuck), m_stuck_ratio(ratio), m_cache(cache), m_restart(restart),
         temp_factors(m_pm),m_dead(dead), m_sub_value(vec), 
         m_nra_operation_table_level2(m_am, m_nra_operation_index_level2, m_nra_operation_value_level2),
-        m_cutoff(100)
+        m_cutoff(100), m_bvalues(bvalues)
         {
             set_const_anum();
             clear_statistics();
@@ -196,6 +198,7 @@ namespace nlsat {
         void clear_statistics(){
             m_stuck = 0;
             m_stuck_ratio = 0;
+            m_restart = 0;
         }
 
         void clear(){
@@ -548,6 +551,20 @@ namespace nlsat {
             return true;
         }
 
+        void init_solution_from_bvalues(){
+            LSTRACE(tout << "start of init solution\n";);
+            init_assignment_from_bvalues();
+            init_literals_delta();
+            init_clauses_delta();
+            m_best_found_restart = m_num_clauses;
+            update_solution_info();
+            m_best_found_cost_bool = UINT_MAX;
+            m_best_found_cost_nra = UINT_MAX;
+            LSTRACE(tout << "end of init solution\n";
+                display_unsat_clauses(tout);
+            );
+        }
+
         var find_unassigned_var(nra_clause const * cls) const {
             SASSERT(cls->get_left_vars() == 1);
             for(var v: cls->m_vars){
@@ -652,8 +669,21 @@ namespace nlsat {
             SASSERT(res != null_var);
             return res;
         }
+
+        static bool lbool2bool(lbool r) {
+            SASSERT(r != l_undef);
+            return r == l_true;
+        }
+
+        void init_assignment_from_bvalues() {
+            for(unsigned i = 0; i < m_bvalues.size(); i++) {
+                if(m_atoms[i] == nullptr) {
+                    SASSERT(m_bvalues[i] != l_undef);
+                    m_bool_vars[i]->set_value(lbool2bool(m_bvalues[i]));
+                }
+            }
+        }
         
-        // TODO: var value propagation CNC
         bool init_assignment(bool first_init){
             LSTRACE(tout << "start of init assignment\n";);
             if(first_init){
@@ -962,7 +992,8 @@ namespace nlsat {
             m_am.set(m_one, 1);
             m_am.set(m_two, 2);
             m_am.set(m_max, INT_MAX);
-            m_am.div(m_one, m_max, m_min);
+            m_am.set(m_hundred, 100);
+            m_am.div(m_one, m_hundred, m_min);
             LSTRACE(display_const_anum(tout););
         }
 
@@ -2348,12 +2379,12 @@ namespace nlsat {
                             LSTRACE(tout << "still stuck\n";);
                             // we use CAD
                             // if(!cad_move(lit, picked_v, w)){
-                                LSTRACE(std::cout << "cad failed\n";);
-                                LSTRACE(tout << "cad failed, we random choose a value\n";);
+                                // LSTRACE(std::cout << "cad failed\n";);
+                                // LSTRACE(tout << "cad failed, we random choose a value\n";);
                                 m_am.set(w, sample_values[rand_int() % sample_values.size()]);
                             // }
                             // else {
-                                LSTRACE(std::cout << "cad succeed\n";);
+                                // LSTRACE(std::cout << "cad succeed\n";);
                             // }
                         }
                     }
@@ -2934,14 +2965,8 @@ namespace nlsat {
             no_improve_cnt = 0;
             m_start_time = std::chrono::steady_clock::now();
             m_step = 0;
-            // ICP returns false
-            if(!init_solution(true)){
-                LSTRACE(std::cout << "ICP returns false\n";);
-                LSTRACE(tout << "ICP returns false\n";);
-                m_bool_result.reset();
-                return std::make_pair(l_false, m_bool_result);
-            }
             m_outer_step = 1;
+            init_solution_from_bvalues();
             for(m_step = 1; m_step < max_step; m_step++){
                 m_stuck_ratio = 1.0 * m_stuck / m_step;
                 LSTRACE(tout << "step: " << m_step << std::endl;
@@ -3034,6 +3059,7 @@ namespace nlsat {
                         SPLIT_LINE(std::cout);
                         SPLIT_LINE(tout);
                     );
+                    m_restart++;
                     init_solution(false);
                     no_improve_cnt = 0;
                 }
@@ -3324,10 +3350,9 @@ namespace nlsat {
     };
 
     ls_helper::ls_helper(solver & s, anum_manager & am, pmanager & pm, polynomial::cache & cache, interval_set_manager & ism, evaluator & ev, 
-                         assignment & ass, clause_vector const & cls, atom_vector const & ats, bool_vector const & dead, unsigned seed, unsigned & step, 
-                         unsigned & stuck, double & ratio, substitute_value_vector const & vec
-                         ){
-        m_imp = alloc(imp, s, am, pm, cache, ism, ev, ass, cls, ats, dead, seed, step, stuck, ratio, vec);
+                         assignment & ass, svector<lbool> const & bvalues, clause_vector const & cls, atom_vector const & ats, bool_vector const & dead, unsigned seed, unsigned & step, 
+                         unsigned & stuck, unsigned & restart, double & ratio, substitute_value_vector const & vec){
+        m_imp = alloc(imp, s, am, pm, cache, ism, ev, ass, bvalues, cls, ats, dead, seed, step, stuck, restart, ratio, vec);
     }
 
     ls_helper::~ls_helper(){

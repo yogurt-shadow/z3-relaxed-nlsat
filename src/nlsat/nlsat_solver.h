@@ -27,6 +27,8 @@ Revision History:
 
 namespace nlsat {
 
+   #define RELAXED_TRACE(CODE) TRACE("nlsat_relaxed", CODE)
+
     class evaluator;
     class explain;
 
@@ -241,6 +243,8 @@ namespace nlsat {
            \brief Display literal
         */
         std::ostream& display_literal(std::ostream & out, literal l) const;
+
+        std::ostream& display(std::ostream & out, literal l) const;
 
         std::ostream& display(std::ostream & out, unsigned n, literal const* ls) const;
 

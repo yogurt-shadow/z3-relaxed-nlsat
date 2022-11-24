@@ -216,6 +216,7 @@ namespace nlsat {
 
         // unit propagate
         bool_var_vector m_unit_bool_vars;
+        var_vector      m_unit_arith_vars;
 
         
         imp(anum_manager & am, pmanager & pm, assignment & ass, evaluator & eva, interval_set_manager & ism, svector<lbool> const & bvalues, bool_var_vector const & pure_bool_vars, bool_var_vector const & pure_bool_convert, solver & s, clause_vector const & clauses, clause_vector & learned, atom_vector const & atoms, 
@@ -272,6 +273,7 @@ namespace nlsat {
             m_find_stage.resize(m_num_vars, null_var);
             m_bool_find_stage.resize(m_num_bool, null_var);
             m_unit_bool_vars.reset();
+            m_unit_arith_vars.reset();
         }
 
         // set hybrid var watch for each clause
@@ -358,6 +360,7 @@ namespace nlsat {
             //     display_assigned_clauses(tout);
             // );
             update_unit_bool_vars();
+            update_unit_arith_vars();
             DTRACE(tout << "end of set watch\n";);
         }
 
@@ -370,9 +373,22 @@ namespace nlsat {
             }
         }
 
+        void update_unit_arith_vars() {
+            m_unit_arith_vars.reset();
+            for(var v = 0; v < m_num_vars; v++) {
+                if(!m_hybrid_var_unit_clauses[m_num_bool + v].empty()) {
+                    m_unit_arith_vars.push_back(v);
+                }
+            }
+        }
+
         // bool var: pure bool index
         bool_var get_unit_bool_var() const {
             return m_unit_bool_vars.empty() ? null_var : m_unit_bool_vars[0];
+        }
+
+        var get_unit_arith_var() const {
+            return m_unit_arith_vars.empty() ? null_var : m_unit_arith_vars[0];
         }
 
         // collect arith var and bool var for each clause
@@ -577,6 +593,7 @@ namespace nlsat {
             m_bool_find_stage.resize(m_num_bool, null_var);
             m_hybrid_heap.set_bounds(m_num_hybrid);
             m_unit_bool_vars.reset();
+            m_unit_arith_vars.reset();
             rebuild_var_heap();
             reset_assigned_vars();
         }
@@ -1074,6 +1091,7 @@ namespace nlsat {
             //     display_assigned_clauses(tout);
             // );
             update_unit_bool_vars();
+            update_unit_arith_vars();
         }
 
         bool unit_clause_contains(clause_index idx) const {
@@ -1174,6 +1192,7 @@ namespace nlsat {
             //     display_unit_clauses(tout);
             // );
             update_unit_bool_vars();
+            update_unit_arith_vars();
         }
 
         void reset_conflict_vars(){
@@ -1791,6 +1810,10 @@ namespace nlsat {
 
     bool_var Dynamic_manager::get_unit_bool_var() const {
         return m_imp->get_unit_bool_var();
+    }
+
+    var Dynamic_manager::get_unit_arith_var() const {
+        return m_imp->get_unit_arith_var();
     }
 
     bool Dynamic_manager::finish_status() const {
