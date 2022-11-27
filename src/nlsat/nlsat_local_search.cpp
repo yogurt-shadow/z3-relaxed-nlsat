@@ -149,15 +149,10 @@ namespace nlsat {
         bool_vector m_bool_is_chosen;
         bool_var_vector m_bool_operation_index;
         
-        anum_table m_nra_operation_table_level1;
-        var_vector m_nra_operation_index_level1;
-        anum_vector m_nra_operation_value_level1;
-        var_vector m_nra_operation_literal_index_level1;
-
-        anum_table m_nra_operation_table_level2;
-        var_vector m_nra_operation_index_level2;
-        anum_vector m_nra_operation_value_level2;
-        var_vector m_nra_operation_literal_index_level2;
+        anum_table m_nra_operation_table;
+        var_vector m_nra_operation_index;
+        anum_vector m_nra_operation_value;
+        var_vector m_nra_operation_literal_index;
 
         unsigned & m_stuck;
         unsigned & m_restart;
@@ -180,10 +175,9 @@ namespace nlsat {
                          unsigned & step, unsigned & stuck, unsigned & restart, double & ratio, substitute_value_vector const & vec)
         : m_am(am), m_pm(pm), m_ism(ism), m_evaluator(ev), m_assignment(ass), m_clauses(cls), 
         m_atoms(ats), m_rand_seed(seed), m_solver(s), m_cc_mode(-1), is_bool_search(false),
-        m_time_label(1), m_nra_operation_table_level1(m_am, m_nra_operation_index_level1, m_nra_operation_value_level1),
+        m_time_label(1), m_nra_operation_table(m_am, m_nra_operation_index, m_nra_operation_value),
         m_step(step), m_stuck(stuck), m_stuck_ratio(ratio), m_cache(cache), m_restart(restart),
         temp_factors(m_pm),m_dead(dead), m_sub_value(vec), 
-        m_nra_operation_table_level2(m_am, m_nra_operation_index_level2, m_nra_operation_value_level2),
         m_cutoff(100), m_bvalues(bvalues)
         {
             set_const_anum();
@@ -1067,45 +1061,24 @@ namespace nlsat {
             return null_var;
         }
 
-        void insert_in_complement_level1(var v, interval_set const * s, literal_index l_idx){
+        void insert_in_complement(var v, interval_set const * s, literal_index l_idx){
             SASSERT(!m_ism.is_full(s));
             LSTRACE(
                 tout << "insertion var " << v << std::endl;
                 tout << "show set of insert: "; m_ism.display(tout, s); tout << std::endl;
             );
             anum_vector w_vec;
-            m_ism.peek_in_complement_heuristic_level1(s, w_vec);
+            m_ism.peek_in_complement_heuristic(s, w_vec);
             for(auto ele: w_vec){
                 if(m_assignment.is_assigned(v) && m_am.eq(ele, m_assignment.value(v))){
                     continue;
                 }
-                if(m_nra_operation_table_level1.contains(v, ele)){
+                if(m_nra_operation_table.contains(v, ele)){
                     continue;
                 }
-                m_nra_operation_index_level1.push_back(v);
-                m_nra_operation_value_level1.push_back(ele);
-                m_nra_operation_literal_index_level1.push_back(l_idx);
-            }
-        }
-
-        void insert_in_complement_level2(var v, interval_set const * s, literal_index l_idx) {
-            SASSERT(!m_ism.is_full(s));
-            LSTRACE(
-                tout << "insertion var " << v << std::endl;
-                tout << "show set of insert: "; m_ism.display(tout, s); tout << std::endl;
-            );
-            anum_vector w_vec;
-            m_ism.peek_in_complement_heuristic_level2(s, w_vec);
-            for(auto ele: w_vec){
-                if(m_assignment.is_assigned(v) && m_am.eq(ele, m_assignment.value(v))){
-                    continue;
-                }
-                if(m_nra_operation_table_level2.contains(v, ele)){
-                    continue;
-                }
-                m_nra_operation_index_level2.push_back(v);
-                m_nra_operation_value_level2.push_back(ele);
-                m_nra_operation_literal_index_level2.push_back(l_idx);
+                m_nra_operation_index.push_back(v);
+                m_nra_operation_value.push_back(ele);
+                m_nra_operation_literal_index.push_back(l_idx);
             }
         }
 
@@ -1264,117 +1237,19 @@ namespace nlsat {
             }
         }
 
-        var select_best_from_arith_operations_level1(int & best_score, anum & best_value, literal_index & best_literal_index){
-            bool BMS;
-            unsigned cnt;
-            var m_arith_index;
-            scoped_anum m_arith_value(m_am);
-            literal_index m_literal_index;
-            if(m_nra_operation_index_level1.size() > 45){
-                cnt = 45;
-                BMS = true;
-            }
-            else {
-                BMS = false;
-                cnt = m_nra_operation_index_level1.size();
-            }
-            LSTRACE(
-                if(BMS){
-                    tout << "BMS enabled\n";
-                } else {
-                    tout << "BMS disabled\n";
-                }
-            );
-            unsigned best_last_move = UINT_MAX, best_arith_index = null_var;
-            best_literal_index = null_var;
-            for(unsigned i = 0; i < cnt; i++){
-                if(BMS){
-                    // swap
-                    unsigned rand_index = rand_int() % (m_nra_operation_index_level1.size() - i);
-                    m_arith_index = m_nra_operation_index_level1[rand_index];
-                    m_literal_index = m_nra_operation_literal_index_level1[rand_index];
-                    m_am.set(m_arith_value, m_nra_operation_value_level1[rand_index]);
-                    m_nra_operation_index_level1[rand_index] = m_nra_operation_index_level1[m_nra_operation_index_level1.size() - i - 1];
-                    m_am.set(m_nra_operation_value_level1[rand_index], m_nra_operation_value_level1[m_nra_operation_index_level1.size() - i - 1]);;
-                    m_nra_operation_literal_index_level1[rand_index] = m_nra_operation_literal_index_level1[m_nra_operation_index_level1.size() - i - 1];
-                }
-                else {
-                    m_arith_index = m_nra_operation_index_level1[i];
-                    m_literal_index = m_nra_operation_literal_index_level1[i];
-                    m_am.set(m_arith_value, m_nra_operation_value_level1[i]);
-                }
-                int curr_score = get_arith_critical_score(m_arith_index, m_arith_value);
-                LSTRACE(tout << "show score in pick nra move: " << curr_score << std::endl;);
-                nra_arith_var const * curr_arith = m_arith_vars[m_arith_index];
-                // compare arith score and last move
-                if(curr_score > best_score || (curr_score == best_score && curr_arith->get_last_move() < best_last_move)){
-                    best_score = curr_score;
-                    best_last_move = curr_arith->get_last_move();
-                    best_arith_index = m_arith_index;
-                    m_am.set(best_value, m_arith_value);
-                    best_literal_index = m_literal_index;
-                }
-            }
-            return best_arith_index;
-        }
-
         var select_best_from_arith_operations(int & best_score, anum & best_value, literal_index & best_literal_index){
-            int origin_best_score = best_score;
-
-            scoped_anum best_value_level1(m_am), best_value_level2(m_am);
-            literal_index best_literal_index_level1, best_literal_index_level2;
-            var v1 = select_best_from_arith_operations_level1(best_score, best_value, best_literal_index);
-            m_am.set(best_value_level1, best_value);
-            best_literal_index_level1 = best_literal_index;
-            int best_score_level1 = best_score;
-            
-            best_score = origin_best_score;
-            var v2 = select_best_from_arith_operations_level2(best_score, best_value, best_literal_index);
-            m_am.set(best_value_level2, best_value);
-            best_literal_index_level2 = best_literal_index;
-            int best_score_level2 = best_score;
-
-            if(v1 == null_var) {
-                best_score = best_score_level2;
-                m_am.set(best_value, best_value_level2);
-                best_literal_index = best_literal_index_level2;
-                return v2;
-            }
-            else if(v2 == null_var) {
-                best_score = best_score_level1;
-                m_am.set(best_value, best_value_level1);
-                best_literal_index = best_literal_index_level1;
-                return v1;
-            }
-            else {
-                if(best_score_level1 > best_score_level2) {
-                    best_score = best_score_level1;
-                    m_am.set(best_value, best_value_level1);
-                    best_literal_index = best_literal_index_level1;
-                    return v1;
-                }
-                else {
-                    best_score = best_score_level2;
-                    m_am.set(best_value, best_value_level2);
-                    best_literal_index = best_literal_index_level2;
-                    return v2;
-                }
-            }
-        }
-
-        var select_best_from_arith_operations_level2(int & best_score, anum & best_value, literal_index & best_literal_index){
             bool BMS;
             unsigned cnt;
             var m_arith_index;
             scoped_anum m_arith_value(m_am);
             literal_index m_literal_index;
-            if(m_nra_operation_index_level2.size() > 45){
+            if(m_nra_operation_index.size() > 45){
                 cnt = 45;
                 BMS = true;
             }
             else {
                 BMS = false;
-                cnt = m_nra_operation_index_level2.size();
+                cnt = m_nra_operation_index.size();
             }
             LSTRACE(
                 if(BMS){
@@ -1388,18 +1263,18 @@ namespace nlsat {
             for(unsigned i = 0; i < cnt; i++){
                 if(BMS){
                     // swap
-                    unsigned rand_index = rand_int() % (m_nra_operation_index_level2.size() - i);
-                    m_arith_index = m_nra_operation_index_level2[rand_index];
-                    m_literal_index = m_nra_operation_literal_index_level2[rand_index];
-                    m_am.set(m_arith_value, m_nra_operation_value_level2[rand_index]);
-                    m_nra_operation_index_level2[rand_index] = m_nra_operation_index_level2[m_nra_operation_index_level2.size() - i - 1];
-                    m_am.set(m_nra_operation_value_level2[rand_index], m_nra_operation_value_level2[m_nra_operation_index_level2.size() - i - 1]);;
-                    m_nra_operation_literal_index_level2[rand_index] = m_nra_operation_literal_index_level2[m_nra_operation_index_level2.size() - i - 1];
+                    unsigned rand_index = rand_int() % (m_nra_operation_index.size() - i);
+                    m_arith_index = m_nra_operation_index[rand_index];
+                    m_literal_index = m_nra_operation_literal_index[rand_index];
+                    m_am.set(m_arith_value, m_nra_operation_value[rand_index]);
+                    m_nra_operation_index[rand_index] = m_nra_operation_index[m_nra_operation_index.size() - i - 1];
+                    m_am.set(m_nra_operation_value[rand_index], m_nra_operation_value[m_nra_operation_index.size() - i - 1]);;
+                    m_nra_operation_literal_index[rand_index] = m_nra_operation_literal_index[m_nra_operation_index.size() - i - 1];
                 }
                 else {
-                    m_arith_index = m_nra_operation_index_level2[i];
-                    m_literal_index = m_nra_operation_literal_index_level2[i];
-                    m_am.set(m_arith_value, m_nra_operation_value_level2[i]);
+                    m_arith_index = m_nra_operation_index[i];
+                    m_literal_index = m_nra_operation_literal_index[i];
+                    m_am.set(m_arith_value, m_nra_operation_value[i]);
                 }
                 int curr_score = get_arith_critical_score(m_arith_index, m_arith_value);
                 LSTRACE(tout << "show score in pick nra move: " << curr_score << std::endl;);
@@ -1457,8 +1332,7 @@ namespace nlsat {
                 if(m_ism.is_full(union_st)){
                     continue;
                 }
-                insert_in_complement_level1(v, union_st, index_code);
-                insert_in_complement_level2(v, union_st, index_code);
+                insert_in_complement(v, union_st, index_code);
             }
         }
 
@@ -1498,8 +1372,7 @@ namespace nlsat {
                 if(m_ism.is_full(union_st)){
                     continue;
                 }
-                insert_in_complement_level1(v, union_st, l->get_index());
-                insert_in_complement_level2(v, union_st, l->get_index());
+                insert_in_complement(v, union_st, l->get_index());
             }
         }
 
@@ -1582,11 +1455,11 @@ namespace nlsat {
                 }
             }
             // loop operation arith variables
-            LSTRACE(display_arith_operations_level1(tout););
+            LSTRACE(display_arith_operations(tout););
             literal_index best_literal_index;
             // anum best_value_level1;
             best_arith_score = 1;
-            best_arith_index = select_best_from_arith_operations_level1(best_arith_score, best_value, best_literal_index);
+            best_arith_index = select_best_from_arith_operations(best_arith_score, best_value, best_literal_index);
             // var best_arith_index_level1 = select_best_from_arith_operations(INT_MIN, best_value_level1, best_literal_index_level1);
             // untabu decreasing arith variable exists
             if(best_arith_index != null_var){
@@ -1602,23 +1475,6 @@ namespace nlsat {
             }
             LSTRACE(tout << "LEVEL I stuck\n";);
 
-            best_arith_score = 1;
-            best_arith_index = select_best_from_arith_operations_level2(best_arith_score, best_value, best_literal_index);
-            if(best_arith_index != null_var) {
-                LSTRACE(
-                    tout << "LEVEL 1.5: choose var " << best_arith_index << std::endl;
-                    tout << "show value: "; m_am.display(tout, best_value); tout << std::endl;
-                    tout << "best literal index: " << best_literal_index << std::endl;
-                );
-                LSTRACE(tout << "show time of end picking nra move\n";
-                    TimeElapsed();
-                );
-                return best_arith_index;
-            }
-
-            // Level 1.5
-            // consider insertion sample values of level2.
-
             // Level II.
             // consider sat clause with false literals
             // var best_arith_index_level2;
@@ -1629,24 +1485,11 @@ namespace nlsat {
                 reset_arith_operation();
                 add_swap_operation();
                 best_arith_score = 1;
-                best_arith_index = select_best_from_arith_operations_level1(best_arith_score, best_value, best_literal_index);
+                best_arith_index = select_best_from_arith_operations(best_arith_score, best_value, best_literal_index);
                 // best_arith_index_level2 = select_best_from_arith_operations(INT_MIN, best_value_level2, best_literal_index_level2);
                 if(best_arith_index != null_var){
                     LSTRACE(
                         tout << "LEVEL II: choose var " << best_arith_index << std::endl;
-                        tout << "show value: "; m_am.display(tout, best_value); tout << std::endl;
-                        tout << "best literal index: " << best_literal_index << std::endl;
-                    );
-                    LSTRACE(tout << "show time of end picking nra move\n";
-                        TimeElapsed();
-                    );
-                    return best_arith_index;
-                }
-                best_arith_score = 1;
-                best_arith_index = select_best_from_arith_operations_level2(best_arith_score, best_value, best_literal_index);
-                if(best_arith_index != null_var) {
-                    LSTRACE(
-                        tout << "LEVEL 2.5: choose var " << best_arith_index << std::endl;
                         tout << "show value: "; m_am.display(tout, best_value); tout << std::endl;
                         tout << "best literal index: " << best_literal_index << std::endl;
                     );
@@ -1724,14 +1567,10 @@ namespace nlsat {
         }
 
         void reset_arith_operation(){
-            m_nra_operation_index_level1.reset();
-            m_nra_operation_value_level1.reset();
-            m_nra_operation_literal_index_level1.reset();
+            m_nra_operation_index.reset();
+            m_nra_operation_value.reset();
+            m_nra_operation_literal_index.reset();
             m_literal_added.reset();
-
-            m_nra_operation_index_level2.reset();
-            m_nra_operation_value_level2.reset();
-            m_nra_operation_literal_index_level2.reset();
         }
 
         /**
@@ -2233,7 +2072,7 @@ namespace nlsat {
             m_bool_operation_index.reset();
             
             // intsert operations
-            for(unsigned i = 0; i < 3 && m_bool_operation_index.size() + m_nra_operation_index_level1.size() + m_nra_operation_index_level2.size() < 5; i++){
+            for(unsigned i = 0; i < 3 && m_bool_operation_index.size() + m_nra_operation_index.size() < 5; i++){
                 clause_index c_idx = m_unsat_clauses[rand_int() % m_unsat_clauses.size()];
                 nra_clause const * curr_clause = m_nra_clauses[c_idx];
                 LSTRACE(tout << "consider clause "; m_solver.display(tout, *curr_clause->get_clause()); tout << std::endl;);
@@ -2259,13 +2098,13 @@ namespace nlsat {
             // end of insert operations, choose best operation (arith and bool)
             // restore chosen bool variables
             reset_chosen_bool();
-            LSTRACE(tout << "[debug] nra size: " << m_nra_operation_index_level1.size() + m_nra_operation_index_level2.size() << std::endl;
+            LSTRACE(tout << "[debug] nra size: " << m_nra_operation_index.size() << std::endl;
                 display_arith_operations(tout);
             );
-            LSCTRACE(m_nra_operation_index_level1.empty() && m_nra_operation_index_level2.empty() && m_bool_operation_index.empty(), tout << "stuck in random walk operation\n";);
+            LSCTRACE(m_nra_operation_index.empty() && m_bool_operation_index.empty(), tout << "stuck in random walk operation\n";);
 
             // make move
-            if(m_bool_operation_index.size() + m_nra_operation_index_level1.size() + m_nra_operation_index_level2.size() == 0){
+            if(m_bool_operation_index.size() + m_nra_operation_index.size() == 0){
                 LSTRACE(tout << "empty operation, return\n";
                     show_ls_assignment(tout);
                 );
@@ -2275,7 +2114,7 @@ namespace nlsat {
                 return;
             }
             // arith move
-            if(m_bool_operation_index.empty() || (m_bool_operation_index.size() > 0 && m_nra_operation_index_level1.size() + m_nra_operation_index_level2.size() > 0 && !is_bool_search)){
+            if(m_bool_operation_index.empty() || (m_bool_operation_index.size() > 0 && m_nra_operation_index.size() > 0 && !is_bool_search)){
                 anum best_arith_value;
                 literal_index best_literal_index;
                 int best_arith_score = INT_MIN;
@@ -2899,7 +2738,7 @@ namespace nlsat {
                 }
             }
             else {
-                for(unsigned i = 0; m_nra_operation_index_level1.size() + m_nra_operation_index_level2.size() < 20 && i < 50; i++){
+                for(unsigned i = 0; m_nra_operation_index.size() < 20 && i < 50; i++){
                     clause_index c_idx = m_sat_clause_with_false_literals[rand_int() % m_sat_clause_with_false_literals.size()];
                     nra_clause const * cls = m_nra_clauses[c_idx];
                     for(literal_index l_idx: cls->m_arith_literals){
@@ -3165,36 +3004,15 @@ namespace nlsat {
         }
 
         std::ostream & display_arith_operations(std::ostream & out) const {
-            display_arith_operations_level1(out);
-            display_arith_operations_level2(out);
-            return out;
-        }
-
-        std::ostream & display_arith_operations_level1(std::ostream & out) const {
             out << "show arith operations\n";
-            SASSERT(m_nra_operation_index_level1.size() == m_nra_operation_value_level1.size());
-            if(m_nra_operation_index_level1.empty()){
+            SASSERT(m_nra_operation_index.size() == m_nra_operation_value.size());
+            if(m_nra_operation_index.empty()){
                 out << "operation is empty\n";
                 show_ls_assignment(out);
             }
-            for(unsigned i = 0; i < m_nra_operation_index_level1.size(); i++){
-                out << "var: " << m_nra_operation_index_level1[i] << "  ";
-                out << "value: "; m_am.display(out, m_nra_operation_value_level1[i]);
-                out << std::endl;
-            }
-            return out;
-        }
-
-        std::ostream & display_arith_operations_level2(std::ostream & out) const {
-            out << "show arith operations\n";
-            SASSERT(m_nra_operation_index_level2.size() == m_nra_operation_value_level2.size());
-            if(m_nra_operation_index_level2.empty()){
-                out << "operation is empty\n";
-                show_ls_assignment(out);
-            }
-            for(unsigned i = 0; i < m_nra_operation_index_level2.size(); i++){
-                out << "var: " << m_nra_operation_index_level2[i] << "  ";
-                out << "value: "; m_am.display(out, m_nra_operation_value_level2[i]);
+            for(unsigned i = 0; i < m_nra_operation_index.size(); i++){
+                out << "var: " << m_nra_operation_index[i] << "  ";
+                out << "value: "; m_am.display(out, m_nra_operation_value[i]);
                 out << std::endl;
             }
             return out;

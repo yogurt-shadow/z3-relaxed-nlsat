@@ -342,6 +342,7 @@ namespace nlsat {
         unsigned m_cad_move, m_cad_succeed;
         unsigned m_poly_bound;
         unsigned m_ls_restart;
+        unsigned m_ls_called;
         // local search
 
         // relaxed nlsat
@@ -1893,9 +1894,12 @@ namespace nlsat {
                 if(m_enable_local_search && can_call_ls && is_promising_branch() && freeze_ls_num < 1) {
                     RELAXED_TRACE(tout << "enable local search\n";);
                     can_call_ls = false;
+                    m_ls_called++;
                     // restore freeze_ls_num
                     freeze_ls_num = local_search_call_gap;
+                    RELAXED_TRACE(tout << "before extend full assignment\n"; display_assignment(tout););
                     extend_full_assignment();
+                    RELAXED_TRACE(tout << "after extend full assignment\n"; display_assignment(tout););
                     RELAXED_TRACE(std::cout << "begin local search\n"; tout << "begin local search\n";);
                     local_search_result res = m_lsh.local_search();
                     if(res.first == l_true) {
@@ -2162,6 +2166,7 @@ namespace nlsat {
             }
 
             max_assigned_size = 0;
+            m_ls_called = 0;
 
             init_pure_bool();
             m_dm.set_var_num(num_vars());
@@ -3027,16 +3032,17 @@ namespace nlsat {
             st.update("nlsat learned deleted", m_learned_deleted);
             // hzw restart
 
-            // ls
+            // wzh ls
             st.update("nlsat local search solved", m_solved_by_ls);
-            st.update("nlsat enable pair cm", m_ls_pair_cm);
+            // st.update("nlsat enable pair cm", m_ls_pair_cm);
             st.update("nlsat local search step", m_ls_step);
             st.update("nlsat local search stuck", m_ls_stuck);
             st.update("nlsat local search stuck ratio", m_ls_stuck_ratio);
-            st.update("nlsat local search cad move", m_cad_move);
-            st.update("nlsat local search cad succeed", m_cad_succeed);
-            st.update("nlsat local seaech poly bound", m_poly_bound);
-            // ls
+            st.update("nlsat local search called", m_ls_called);
+            // st.update("nlsat local search cad move", m_cad_move);
+            // st.update("nlsat local search cad succeed", m_cad_succeed);
+            // st.update("nlsat local seaech poly bound", m_poly_bound);
+            // hzw ls
         }
 
         void reset_statistics() {

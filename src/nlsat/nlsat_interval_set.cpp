@@ -923,11 +923,11 @@ namespace nlsat {
         vec.push_back(w1);
 
         // // zero
-        // anum w2;
-        // if(peek_in_complement_zero(s, w2)){
-        //     SASSERT(m_am.is_zero(w2));
-        //     vec.push_back(w2);
-        // }
+        anum w2;
+        if(peek_in_complement_zero(s, w2)){
+            SASSERT(m_am.is_zero(w2));
+            vec.push_back(w2);
+        }
 
         // // integer lower bound
         // anum lower_w;
