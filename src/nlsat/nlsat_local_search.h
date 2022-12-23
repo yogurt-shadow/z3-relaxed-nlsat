@@ -24,6 +24,9 @@
 #include "nlsat/nlsat_interval_set.h"
 #include "nlsat/nlsat_evaluator.h"
 #include "nlsat/nlsat_interval_set.h"
+#include "util/hashtable.h"
+
+#include "nlsat/nlsat_advanced_types.h"
 
 #define LSTRACE(CODE) TRACE("nlsat_ls", CODE)
 #define LSCTRACE(COND, CODE) CTRACE("nlsat_ls", COND, CODE)
@@ -35,26 +38,6 @@ namespace nlsat {
     typedef var clause_index;
     using var_pair = std::pair<var, var>;
     using poly_vector = vector<poly *>;
-
-    /**
-     * @param bool: succeed or fail
-     * @param bool_vector: assignment of pure bool variables
-     */
-    typedef std::pair<lbool, bool_vector> local_search_result;
-
-    // struct var_hash {
-    //     unsigned operator()(var v) const {
-    //         return v;
-    //     }
-    // };
-
-    // struct var_eq {
-    //     bool operator()(var x, var y) const {
-    //         return x == y;
-    //     }
-    // };
-
-    // typedef hashtable<var, var_hash, var_eq> var_table;
 
     class anum_table {
     private:
@@ -289,10 +272,6 @@ namespace nlsat {
 
     typedef ptr_vector<nra_clause> nra_clause_vector;
 
-    
-    // typedef std::pair<poly const *, poly_bound_state> poly_bound;
-    // typedef vector<poly_bound> poly_bound_vector;
-
     // Arith Variable
     class nra_arith_var {
     private:
@@ -308,8 +287,6 @@ namespace nlsat {
         var_vector m_literals;
         // the clause which the literal belongs to
         var_vector m_lit_cls;
-        // poly bound of vars
-        // poly_bound_vector m_poly_bound;
         /**
          * The same literal may be contained in couple of clauses
          * In this case, we store copied version of literal
@@ -408,11 +385,13 @@ namespace nlsat {
         void add_clause(clause_index c){
             m_clauses.push_back(c);
         }
-
+        
+        // ^ pure bool index
         unsigned get_index() const {
             return m_index;
         }
 
+        // ^ atom index
         unsigned get_origin_index() const {
             return m_origin_index;
         }
@@ -470,12 +449,15 @@ namespace nlsat {
         imp * m_imp;
     public:
         ls_helper(solver & s, anum_manager & am, pmanager & pm, polynomial::cache & cache, interval_set_manager & ism, evaluator & ev, 
-                         assignment & ass, svector<lbool> const & bvalues, clause_vector const & cls, atom_vector const & ats, bool_vector const & dead, unsigned seed, unsigned & step, 
-                         unsigned & stuck, unsigned & restart, double & ratio, substitute_value_vector const & vec);
+                         assignment & ass, svector<lbool> & bvalues, clause_vector const & cls, atom_vector const & ats, bool_var_vector const & pure_bool_vars, 
+                         bool_var_vector const & pure_bool_convert, 
+                        unsigned seed, unsigned & step, unsigned & stuck, double & ratio, substitute_value_vector const & vec);
 
         ~ls_helper();
 
-        local_search_result local_search();
+        lbool local_search();
+
+        lbool relaxed_local_search();
 
         void set_var_num(unsigned x);
     };

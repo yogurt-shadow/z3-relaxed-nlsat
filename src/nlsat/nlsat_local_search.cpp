@@ -2,183 +2,190 @@
 #include "util/heap.h"
 
 /**
- * 22/10/10: substitution
-*            meti-tarski: a1 x+b1 y = 0, a2 x^2 + b2 y^2 = d
+ * * local search for nlsat on nonlinear real arithmetic
 */
 
 namespace nlsat {
-    struct clause_var_number_lt {
-        const nra_clause_vector & vec;
-        clause_var_number_lt(const nra_clause_vector & v): vec(v) {}
-
-        bool operator()(clause_index x, clause_index y) const {
-            return vec[x]->get_left_vars() < vec[y]->get_left_vars();
-        }
-    };
-
     struct ls_helper::imp {
-        // Basic
-        solver & m_solver;
-        evaluator & m_evaluator;
-        anum_manager & m_am;
-        pmanager & m_pm;
-        polynomial::cache &     m_cache;
-        interval_set_manager & m_ism;
-
-        // Assignment
-        assignment & m_assignment;
-        bool_vector m_bool_result;
-
-        typedef ptr_vector<interval_set> interval_set_vector;
-        // interval_set_vector m_var_init_st;
-        bool_vector m_var_value_fixed;
+        /**
+         * * Basic Manager
+        */
+        anum_manager                       &                 m_am;
+        pmanager                           &                 m_pm;
+        interval_set_manager               &                 m_ism;
+        evaluator                          &                 m_evaluator;
+        polynomial::cache                  &                 m_cache;
+        solver                             &                 m_solver;
 
         /**
-         * Const Anum
-         * Zero: 0
-         * One: 1
-         * Delta: 1/max
-         * Max: INT_MAX
-         */
-        anum m_zero, m_one, m_two, m_min, m_max, m_hundred;
+         * * Assignment
+        */
+        assignment                         &                 m_assignment;
+        svector<lbool>                     &                 m_bvalues;
 
         /**
-         * Arith Var
+         * * whether the value is fixed, i.e. can only be that point value
+        */
+        bool_vector                                          m_var_value_fixed;
+
+        /**
+         * ^ Const Anum
+         * ^ Zero: 0
+         * ^ One: 1
+         * ^ Delta: 1/max
+         * ^ Max: INT_MAX
          */
-        nra_arith_var_vector m_arith_vars;
-        var_table m_vars_visited;
-        var_table m_literal_added;
-        // used for calculating bound assignment
-        // var_vector m_irra_vars;
-        // anum_vector m_var_values;
+        anum                                                 m_zero, 
+                                                             m_one, 
+                                                             m_two, 
+                                                             m_min, 
+                                                             m_max;
+
+        /**
+         * * Arith Var
+         */
+        nra_arith_var_vector                                 m_arith_vars;
+        // ^ arith vars that are visited
+        var_table                                            m_vars_visited;
+        // ^ literals that have been inserted from
+        var_table                                            m_literal_added;
         
         /**
-         * Bool Var
+         * * Bool Var
          */
-        nra_bool_var_vector m_bool_vars;
-        var_vector m_bool_convert;
-        bool_var m_max_bool_var;
+        nra_bool_var_vector                                  m_bool_vars;
+        // ^ pure bool index --> atom index
+        const bool_var_vector        &                       m_pure_bool_vars;
+        // ^ atom index --> pure bool index
+        const bool_var_vector        &                       m_pure_bool_convert;
+        bool_var                                             m_max_bool_var;
 
         /**
-         * Literal
+         * * Literal
          */
-        nra_literal_vector m_nra_literals;
-        var m_num_bool_literals;
-        var m_num_arith_literals;
+        nra_literal_vector                                   m_nra_literals;
+        var                                                  m_num_bool_literals;
+        var                                                  m_num_arith_literals;
         
-        literal_vector m_literal_visited;
-        // used for set literal anum
-        var_vector m_literal_index_visited;
-        // store before sat information
-        bool_vector m_literal_before_sat;
+        literal_vector                                       m_literal_visited;
+        // ^ used for set literal anum
+        var_vector                                           m_literal_index_visited;
+        // ^ store before sat information
+        bool_vector                                          m_literal_before_sat;
 
         /**
-         * Count duplicated literals in various clauses
+         * * Count duplicated literals in various clauses
+         * * Used for switch bool mode and arith mode
          */
-        unsigned m_num_unsat_literals;
-        unsigned m_num_bool_unsat_literals;
+        unsigned                                             m_num_unsat_literals;
+        unsigned                                             m_num_bool_unsat_literals;
 
         /**
          * Clause
          */
-        const clause_vector & m_clauses;
-        nra_clause_vector m_nra_clauses;
-        // used to get var's interval set (ignore in main search)
+        const clause_vector                 &                m_clauses;
+        nra_clause_vector                                    m_nra_clauses;
+
+        /** 
+         * * Used for init arith var's infeasible set
+        */
         // only contain just one arith variable
-        var_table m_unit_var_clauses;
+        var_table                                            m_unit_var_clauses;
         // only contain one literal
-        var_table m_unit_clauses;
+        var_table                                            m_unit_clauses;
+
         // unsat clauses (index)
-        var_vector m_unsat_clauses;
+        var_vector                                           m_unsat_clauses;
         // unsat clauses with pure bool var (index)
-        var_table m_unsat_clauses_bool;
+        var_table                                            m_unsat_clauses_bool;
         // sat clause with false literals (index)
-        var_vector m_sat_clause_with_false_literals;
-        unsigned m_total_clause_weight;
+        var_vector                                           m_sat_clause_with_false_literals;
+
+        /**
+         * * Weight
+        */
+        unsigned                                             m_total_clause_weight;
+        const unsigned                                       smooth_probability = 3;
 
         /**
          * Atoms
          */
-        const atom_vector & m_atoms;
-        // dead bool vars
-        const bool_vector & m_dead;
+        const atom_vector                &                   m_atoms;
 
         /**
          * Information
          */
-        var m_num_vars;
-        var m_num_bool_vars;
-        var m_num_literals;
-        var m_num_clauses;
+        var                                                  m_num_vars;
+        var                                                  m_num_bool_vars;
+        var                                                  m_num_literals;
+        var                                                  m_num_clauses;
 
         /**
          * Random
          */
-        unsigned m_rand_seed;
+        unsigned                                             m_rand_seed;
 
         /**
-         * Solution
+         * * improvement and restart
          */
-        // unsigned m_best_found_cost;
-        unsigned m_best_found_restart;
-        unsigned no_improve_cnt_bool;
-        unsigned no_improve_cnt_nra;
-        unsigned no_improve_cnt;
-        unsigned m_best_found_cost_bool;
-        unsigned m_best_found_cost_nra;
+        unsigned                                             m_best_found_restart;
+        unsigned                                             no_improve_cnt_bool;
+        unsigned                                             no_improve_cnt_nra;
+        unsigned                                             no_improve_cnt;
+        unsigned                                             m_best_found_cost_bool;
+        unsigned                                             m_best_found_cost_nra;
 
         /**
-         * Control
+         * * local search control
          */
-        var & m_step;
-        var m_outer_step;
-        unsigned m_num_arith_opt, m_num_bool_opt;
-        const unsigned max_step = 200;
-        int m_cc_mode;
-        std::chrono::steady_clock::time_point m_start_time;
-        int m_time_label;
-        double m_best_cost_time;
-        double m_cutoff;
-        bool use_swap;
-        bool is_bool_search;
-        const unsigned smooth_probability = 3;
+        var                          &                       m_step;
+        var                                                  m_outer_step;
+        const unsigned                                       max_step        =       UINT_MAX;
+        const unsigned                                       relaxed_max_step =      100;
+        bool                                                 is_bool_search;
 
         /**
-         * Operation
+         * * Time
+        */
+        std::chrono::steady_clock::time_point                m_start_time;
+        int                                                  m_time_label;
+        double                                               m_best_cost_time;
+        double                                               m_cutoff;
+        double                                               m_relaxed_cutoff;
+
+        /**
+         * * Operation
          */
-        bool_vector m_bool_is_chosen;
-        bool_var_vector m_bool_operation_index;
+        bool_vector                                          m_bool_is_chosen;
+        bool_var_vector                                      m_bool_operation_index;
         
-        anum_table m_nra_operation_table;
-        var_vector m_nra_operation_index;
-        anum_vector m_nra_operation_value;
-        var_vector m_nra_operation_literal_index;
+        anum_table                                           m_nra_operation_table;
+        var_vector                                           m_nra_operation_index;
+        anum_vector                                          m_nra_operation_value;
+        var_vector                                           m_nra_operation_literal_index;
 
-        unsigned & m_stuck;
-        unsigned & m_restart;
-        double & m_stuck_ratio;
-        const bool use_factor = true;
-        polynomial_ref_vector temp_factors;
+        /**
+         * * Statistics
+        */
+        // ^ no stuck
+        unsigned                   &                         m_stuck;
+        // ^ stuck step / whole step
+        double                     &                         m_stuck_ratio;
+        bool                                                 m_no_operation;
 
         const substitute_value_vector & m_sub_value;
-
-        // relaxed nlsat
-        var_vector m_var_in_conflict_step;
-        svector<lbool> const & m_bvalues;
-        // TODO: literal conflict step
-
-        // relaxed nlsat
         
 
         imp(solver & s, anum_manager & am, pmanager & pm, polynomial::cache & cache, interval_set_manager & ism, evaluator & ev, 
-                         assignment & ass, svector<lbool> const & bvalues, clause_vector const & cls, atom_vector const & ats, bool_vector const & dead, unsigned seed,
-                         unsigned & step, unsigned & stuck, unsigned & restart, double & ratio, substitute_value_vector const & vec)
-        : m_am(am), m_pm(pm), m_ism(ism), m_evaluator(ev), m_assignment(ass), m_clauses(cls), 
-        m_atoms(ats), m_rand_seed(seed), m_solver(s), m_cc_mode(-1), is_bool_search(false),
-        m_time_label(1), m_nra_operation_table(m_am, m_nra_operation_index, m_nra_operation_value),
-        m_step(step), m_stuck(stuck), m_stuck_ratio(ratio), m_cache(cache), m_restart(restart),
-        temp_factors(m_pm),m_dead(dead), m_sub_value(vec), 
-        m_cutoff(100), m_bvalues(bvalues)
+                         assignment & ass, svector<lbool> & bvalues, clause_vector const & cls, atom_vector const & ats, bool_var_vector const & pure_bool_vars, 
+                         bool_var_vector const & pure_bool_convert, unsigned seed, unsigned & step, 
+                         unsigned & stuck, double & ratio, substitute_value_vector const & vec)
+        : m_am(am), m_pm(pm), m_ism(ism), m_evaluator(ev), m_assignment(ass), 
+        m_clauses(cls), m_atoms(ats), m_rand_seed(seed), m_solver(s), m_cutoff(1200), is_bool_search(false),
+        m_nra_operation_table(m_am, m_nra_operation_index, m_nra_operation_value),
+        m_step(step), m_stuck(stuck), m_stuck_ratio(ratio), m_cache(cache), m_sub_value(vec),
+        m_time_label(1), m_pure_bool_vars(pure_bool_vars), m_pure_bool_convert(pure_bool_convert), m_bvalues(bvalues),
+        m_relaxed_cutoff(10), m_no_operation(false)
         {
             set_const_anum();
             clear_statistics();
@@ -191,8 +198,7 @@ namespace nlsat {
 
         void clear_statistics(){
             m_stuck = 0;
-            m_stuck_ratio = 0;
-            m_restart = 0;
+            m_stuck_ratio = 0.0;
         }
 
         void clear(){
@@ -200,7 +206,7 @@ namespace nlsat {
         }
 
         /**
-         * Initialize
+         * * Initialize
          */
         void set_var_num(unsigned x){
             LSTRACE(tout << "set arith variable number: " << x << std::endl;
@@ -209,7 +215,6 @@ namespace nlsat {
             m_num_vars = x;
             LSTRACE(display_vars(tout); display_clauses(tout););
             init_bool_vars();
-            init_bool_convert();
             init_arith_vars();
             init_clauses();
             LSTRACE(tout << "end of set arith variable numbers" << std::endl;
@@ -217,35 +222,24 @@ namespace nlsat {
             );
         }
 
+        /**
+         * * fill in with pure bool vars
+        */
         void init_bool_vars(){
             m_bool_vars.reset();
-            m_max_bool_var = 0;
-            m_num_bool_vars = 0;
-            bool_var curr_index = 0;
-            for(bool_var b = 0; b < m_atoms.size(); b++){
-                if(m_atoms[b] == nullptr && !m_dead[b]){
-                    m_num_bool_vars++;
-                    nra_bool_var * temp_bvar = new nra_bool_var(curr_index, b);
-                    m_bool_vars.push_back(temp_bvar);
-                    curr_index++;
-                    SASSERT(b >= m_max_bool_var);
-                    m_max_bool_var = b;
-                }
+            m_num_bool_vars = m_pure_bool_vars.size();
+            m_max_bool_var = m_pure_bool_vars.empty() ? null_var : m_pure_bool_vars.back();
+            for(unsigned i = 0; i < m_num_bool_vars; i++) {
+                // pure bool index, atom index
+                m_bool_vars.push_back(new nra_bool_var(i, m_pure_bool_vars[i]));
             }
             m_bool_is_chosen.resize(m_num_bool_vars, false);
             LSTRACE(tout << "number of pure bool variables: " << m_num_bool_vars << std::endl;);
         }
 
-        void init_bool_convert(){
-            m_bool_convert.resize(m_max_bool_var + 1, UINT_MAX);
-            for(bool_var b = 0; b < m_bool_vars.size(); b++){
-                m_bool_convert[m_bool_vars[b]->get_origin_index()] = m_bool_vars[b]->get_index();
-            }
-            LSTRACE(tout << "show bool convert\n";
-                display_var_vector(tout, m_bool_convert);
-            );
-        }
-
+        /**
+         * * fill in with arith vars
+        */
         void init_arith_vars(){
             m_arith_vars.reset();
             for(var v = 0; v < m_num_vars; v++){
@@ -270,12 +264,12 @@ namespace nlsat {
             m_unit_clauses.reset();
             for(clause_index idx = 0; idx < m_clauses.size(); idx++){
                 const clause & cls = *(m_clauses[idx]);
-                LSTRACE(tout << "init clause "; m_solver.display_clause(tout, cls); tout << std::endl;);
+                LSTRACE(tout << "init clause "; m_solver.display(tout, cls); tout << std::endl;);
                 nra_literal_vector curr_literals;
                 var_table m_clause_vars;
                 var_table m_clause_bool_vars;
                 for(literal l: cls){
-                    LSTRACE(tout << "pre-init literal "; m_solver.display_literal(tout, l); tout << std::endl;);
+                    LSTRACE(tout << "pre-init literal "; m_solver.display(tout, l); tout << std::endl;);
                     literal_index lit_index = find_literal_vector(m_literal_visited, l);
                     nra_literal * m_literal;
                     if(lit_index == UINT_MAX){
@@ -346,7 +340,7 @@ namespace nlsat {
                         SASSERT(loop_literal->m_vars.size() == 1 && loop_literal->m_vars[0] == cls_var);
                         // we get infeasible set
                         interval_set_ref loop_st(m_ism);
-                        loop_st = m_evaluator.infeasible_intervals(loop_literal->get_atom(), loop_literal->sign(), temp_clause->get_clause(), cls_var);
+                        loop_st = m_evaluator.infeasible_intervals_sls(loop_literal->get_atom(), loop_literal->sign(), temp_clause->get_clause(), cls_var);
                         curr_st = m_ism.mk_intersection(curr_st, loop_st);
                     }
                     // infeasible set --> feasible set
@@ -367,125 +361,6 @@ namespace nlsat {
             );
         }
 
-        // void init_arith_var_poly_bound(){
-        //     LSTRACE(tout << "start of init poly bound\n";);
-        //     for(clause_index c_idx: m_unit_clauses){
-        //         if(m_unit_var_clauses.contains(c_idx)){
-        //             continue;
-        //         }
-        //         nra_clause const * cls = m_nra_clauses[c_idx];
-        //         SASSERT(cls->size() == 1);
-        //         // no arith var
-        //         if(cls->m_vars.empty()){
-        //             continue;
-        //         }
-        //         SASSERT(cls->arith_size() == 1);
-        //         nra_literal const * lit = m_nra_literals[cls->m_literals[0]];
-        //         polynomial_ref curr_p(m_pm);
-        //         curr_p = get_atom_polys(lit->get_atom());
-        //         LSTRACE(tout << "show poly: "; m_pm.display(tout, curr_p); tout << std::endl;);
-        //         for(var v: lit->m_vars){
-        //             unsigned deg = m_pm.degree(curr_p, v);
-        //             LSTRACE(tout << "degree of var " << v << std::endl;
-        //                 tout << deg << std::endl;
-        //             );
-        //             // degree == 1
-        //             if(deg != 1){
-        //                 continue;
-        //             }
-        //             // const coeff
-        //             if(m_pm.nonzero_const_coeff(curr_p, v, deg)){
-        //                 // coeff
-        //                 poly * const_coeff = m_pm.coeff(curr_p, v, deg);
-        //                 SASSERT(m_pm.is_const(const_coeff) && !m_pm.is_zero(const_coeff));
-        //                 // x^1
-        //                 poly * var_term = m_pm.mk_polynomial(v, deg);
-        //                 // coeff * x^1
-        //                 poly * var_const_term  = m_pm.mul(var_term, const_coeff);
-        //                 // left poly
-        //                 poly * res_poly = m_pm.sub(curr_p, var_const_term);
-        //                 // -left poly / coeff
-        //                 poly * res_poly_div = m_pm.exact_div(res_poly, const_coeff);
-        //                 res_poly_div = m_pm.neg(res_poly_div);
-        //                 nra_arith_var * m_var = m_arith_vars[v];
-        //                 poly_bound_state curr_state = convert_poly_bound_state(const_coeff, lit->get_atom()->get_kind(), lit->sign());
-        //                 m_var->push_poly_bound(res_poly_div, curr_state);
-        //                 m_poly_bound++;
-        //                 LSTRACE(tout << "show poly bound atom:\n";
-        //                     m_solver.display(tout, *lit->get_atom()); tout << std::endl;
-        //                     tout << "show poly bound for var " << v << ":\n";
-        //                     m_pm.display(tout, res_poly_div); tout << std::endl;
-        //                     display_poly_bound_state(tout, curr_state);
-        //                 );
-
-        //             }
-        //         }
-        //     }
-        //     LSTRACE(tout << "end of init poly bound\n";);
-        // }
-
-        poly_bound_state convert_poly_bound_state(poly const * const_coeff, atom::kind k, bool sign) const {
-            SASSERT(m_pm.is_const(const_coeff) && !m_pm.is_zero(const_coeff));
-            if(!sign){
-                if(m_pm.is_pos(const_coeff)){
-                    switch(k){
-                        case atom::kind::EQ:
-                            return EQ;
-                        case atom::kind::GT:
-                            return GT;
-                        case atom::kind::LT:
-                            return LT;
-                        default:
-                            UNREACHABLE();
-                    }
-                }
-                else if(m_pm.is_neg(const_coeff)){
-                    switch(k){
-                        case atom::kind::EQ:
-                            return EQ;
-                        case atom::kind::GT:
-                            return LT;
-                        case atom::kind::LT:
-                            return GT;
-                        default:
-                            UNREACHABLE();
-                    }
-                }
-                else {
-                    UNREACHABLE();
-                }
-            }
-            else {
-                if(m_pm.is_pos(const_coeff)){
-                    switch(k){
-                        case atom::kind::EQ:
-                            return NEQ;
-                        case atom::kind::GT:
-                            return LE;
-                        case atom::kind::LT:
-                            return GE;
-                        default:
-                            UNREACHABLE();
-                    }
-                }
-                else if(m_pm.is_neg(const_coeff)){
-                    switch(k){
-                        case atom::kind::EQ:
-                            return NEQ;
-                        case atom::kind::GT:
-                            return GE;
-                        case atom::kind::LT:
-                            return LE;
-                        default:
-                            UNREACHABLE();
-                    }
-                }
-                else {
-                    UNREACHABLE();
-                }
-            }
-        }
-
         void init_arith_infeasible_set(){
             // m_var_init_st.reset();
             m_var_value_fixed.resize(m_arith_vars.size(), false);
@@ -496,11 +371,11 @@ namespace nlsat {
         }
 
         void init_literal(literal l){
-            LSTRACE(tout << "init literal "; m_solver.display_literal(tout, l); tout << std::endl;);
+            LSTRACE(tout << "init literal "; m_solver.display(tout, l); tout << std::endl;);
             bool is_bool = is_bool_literal(l);
             // bool literal: pure bool index
             // arith literal: null_var
-            bool_var b_idx = is_bool ? m_bool_convert[l.var()] : null_var;
+            bool_var b_idx = is_bool ? m_pure_bool_convert[l.var()] : null_var;
             literal_index m_index = m_nra_literals.size();
             var_table m_vars;
             get_literal_vars(l, m_vars);
@@ -530,7 +405,7 @@ namespace nlsat {
         // only ICP for the first initialize
         bool init_solution(bool first_init){
             LSTRACE(tout << "start of init solution\n";);
-            if(!init_assignment(first_init)){
+            if(!construct_assignment(first_init)){
                 return false;
             }
             init_literals_delta();
@@ -545,18 +420,17 @@ namespace nlsat {
             return true;
         }
 
-        void init_solution_from_bvalues(){
-            LSTRACE(tout << "start of init solution\n";);
-            init_assignment_from_bvalues();
+        void init_solution_from_assignment() {
+            for(unsigned i = 0; i < m_pure_bool_vars.size(); i++) {
+                SASSERT(m_bvalues[m_pure_bool_vars[i]] != l_undef);
+                m_bool_vars[i]->set_value(m_bvalues[m_pure_bool_vars[i]]);
+            }
             init_literals_delta();
             init_clauses_delta();
             m_best_found_restart = m_num_clauses;
             update_solution_info();
             m_best_found_cost_bool = UINT_MAX;
             m_best_found_cost_nra = UINT_MAX;
-            LSTRACE(tout << "end of init solution\n";
-                display_unsat_clauses(tout);
-            );
         }
 
         var find_unassigned_var(nra_clause const * cls) const {
@@ -606,7 +480,7 @@ namespace nlsat {
                 else {
                     SASSERT(curr_literal->m_vars.contains(x));
                     interval_set_ref curr_st(m_ism), union_st(m_ism);
-                    curr_st = m_evaluator.infeasible_intervals(curr_literal->get_atom(), curr_literal->sign(), nullptr, x);
+                    curr_st = m_evaluator.infeasible_intervals_sls(curr_literal->get_atom(), curr_literal->sign(), nullptr, x);
                     if(curr_arith->m_infeasible_st != nullptr){
                         m_ism.inc_ref(curr_arith->m_infeasible_st);
                     }
@@ -663,130 +537,84 @@ namespace nlsat {
             SASSERT(res != null_var);
             return res;
         }
-
-        static bool lbool2bool(lbool r) {
-            SASSERT(r != l_undef);
-            return r == l_true;
-        }
-
-        void init_assignment_from_bvalues() {
-            for(unsigned i = 0; i < m_bvalues.size(); i++) {
-                if(m_atoms[i] == nullptr) {
-                    SASSERT(m_bvalues[i] != l_undef);
-                    m_bool_vars[i]->set_value(lbool2bool(m_bvalues[i]));
-                }
-            }
-        }
         
-        bool init_assignment(bool first_init){
-            LSTRACE(tout << "start of init assignment\n";);
-            if(first_init){
-                m_assignment.reset();
-                for(bool_var b = 0; b < m_num_bool_vars; b++){
-                    m_bool_vars[b]->set_value(true);
-                }
-                for(var v = 0; v < m_num_vars; v++){
-                    nra_arith_var const * curr_arith = m_arith_vars[v];
-                    // infeasible set full
-                    if(m_ism.is_full(curr_arith->m_infeasible_st)){
-                        return false;
-                    }
-                    LSTRACE(tout << "var " << v << ", "; m_ism.display(tout, curr_arith->m_feasible_st); tout << std::endl;);
-                    if(m_ism.contains_zero(curr_arith->m_feasible_st)){
-                        LSTRACE(tout << "set zero\n";);
-                        m_assignment.set(v, m_zero);
-                    }
-                    else {
-                        LSTRACE(tout << "not zero\n";);
-                        scoped_anum w(m_am);
-                        m_ism.peek_in_complement(curr_arith->m_infeasible_st, false, w, true);
-                        m_assignment.set(v, w);
-                    }
-                }
+        // first init: ICP
+        bool construct_assignment(bool first_init){
+            return first_init ? init_assignment() : restart_assignment();
+        }
 
-                // LSTRACE(tout << "use value propagation\n";);
-                // unsigned m_num_assigned_vars = 0;
-                // while(m_num_assigned_vars < m_num_vars){
-                //     var x;
-                //     if(!m_unit_var_clauses.empty()){
-                //         unsigned cls_idx = random_select_one_from_table(m_unit_var_clauses);
-                //         nra_clause const * cls = m_nra_clauses[cls_idx];
-                //         SASSERT(cls->get_left_vars() == 1);
-                //         x = find_unassigned_var(cls);
-                //         SASSERT(x != null_var);
-                //         if(!process_clause(cls, x)){
-                //             return false;
-                //         }
-                //     }
-                //     else {
-                //         // random select and choose value
-                //         x = random_unassigned_var();
-                //         SASSERT(x != null_var);
-                //         nra_arith_var const * curr_arith = m_arith_vars[x];
-                //         if(m_ism.is_full(curr_arith->m_infeasible_st)){
-                //             return false;
-                //         }
-                //         if(m_ism.contains_zero(curr_arith->m_infeasible_st)){
-                //             m_assignment.set(x, m_zero);
-                //         }
-                //         else {
-                //             scoped_anum w(m_am);
-                //             m_ism.peek_in_complement(curr_arith->m_infeasible_st, false, w, true);
-                //             m_assignment.set(x, w);
-                //         }
-                //     }
-                //     update_unit_var_clauses(x);
-                //     m_num_assigned_vars++;
-                // }
-                
-                // init use swap
-                use_swap = false;
-                LSTRACE(tout << "end of init assignment\n";
-                    show_ls_assignment(tout);
-                );
-                return true;
+        // ^ construct assignment for the first time
+        bool init_assignment() {
+            LSTRACE(tout << "start of init assignment\n";);
+            m_assignment.reset();
+            // bool vars set all true
+            for(bool_var b = 0; b < m_num_bool_vars; b++){
+                m_bool_vars[b]->set_value(true);
             }
-            // consider old value
-            else {
-                use_swap = false;
-                if(m_unsat_clauses.empty()){
-                    return true;
+            // arith vars set zero or other
+            for(var v = 0; v < m_num_vars; v++){
+                nra_arith_var const * curr_arith = m_arith_vars[v];
+                // infeasible set full, ICP returns false
+                if(m_ism.is_full(curr_arith->m_infeasible_st)){
+                    return false;
                 }
-                clause_index curr_index = m_unsat_clauses[rand_int() % m_unsat_clauses.size()];
-                nra_clause const * curr_clause = m_nra_clauses[curr_index];
-                SASSERT(curr_clause->size() > 0);
-                literal_index l_idx = curr_clause->m_literals[rand_int() % curr_clause->size()];
-                nra_literal const * curr_l = m_nra_literals[l_idx];
-                if(curr_l->is_bool()){
-                    return true;
+                LSTRACE(tout << "var " << v << ", "; m_ism.display(tout, curr_arith->m_feasible_st); tout << std::endl;);
+                if(m_ism.contains_zero(curr_arith->m_feasible_st)){
+                    LSTRACE(tout << "set zero\n";);
+                    m_assignment.set(v, m_zero);
                 }
-                SASSERT(!curr_l->m_vars.empty());
-                for(var v: curr_l->m_vars){
-                    if(m_var_value_fixed[v]){
-                        continue;
-                    }
-                    nra_arith_var const * curr_arith = m_arith_vars[v];
-                    scoped_anum w(m_am), old_value(m_am);
-                    m_am.set(old_value, m_assignment.value(v));
-                    interval_set_ref old_value_interval(m_ism);
-                    // [old_value, old_value]
-                    old_value_interval = m_ism.mk_point_interval(old_value);
-                    interval_set_ref curr_st(m_ism);
-                    if(curr_arith->m_infeasible_st != nullptr){
-                        m_ism.inc_ref(curr_arith->m_infeasible_st);
-                    }
-                    curr_st = m_ism.mk_union(old_value_interval, curr_arith->m_infeasible_st);
-                    // happens for ==
-                    if(m_ism.is_full(curr_st)){
-                        m_var_value_fixed[v] = true;
-                        continue;
-                    }
-                    m_ism.peek_in_complement(curr_st, false, w, true);
+                else {
+                    LSTRACE(tout << "not zero\n";);
+                    scoped_anum w(m_am);
+                    m_ism.peek_in_complement(curr_arith->m_infeasible_st, false, w, true);
                     m_assignment.set(v, w);
-                    return true;
                 }
+            }
+            LSTRACE(tout << "end of init assignment\n";
+                show_ls_assignment(tout);
+            );
+            return true;
+        }
+
+        // ^ construct assignment when restarting
+        bool restart_assignment() {
+            if(m_unsat_clauses.empty()){
                 return true;
             }
+            clause_index curr_index = m_unsat_clauses[rand_int() % m_unsat_clauses.size()];
+            nra_clause const * curr_clause = m_nra_clauses[curr_index];
+            SASSERT(curr_clause->size() > 0);
+            literal_index l_idx = curr_clause->m_literals[rand_int() % curr_clause->size()];
+            nra_literal const * curr_l = m_nra_literals[l_idx];
+            if(curr_l->is_bool()){
+                return true;
+            }
+            SASSERT(!curr_l->m_vars.empty());
+            for(var v: curr_l->m_vars){
+                if(m_var_value_fixed[v]){
+                    continue;
+                }
+                nra_arith_var const * curr_arith = m_arith_vars[v];
+                scoped_anum w(m_am), old_value(m_am);
+                m_am.set(old_value, m_assignment.value(v));
+                interval_set_ref old_value_interval(m_ism);
+                // [old_value, old_value]
+                old_value_interval = m_ism.mk_point_interval(old_value);
+                interval_set_ref curr_st(m_ism);
+                if(curr_arith->m_infeasible_st != nullptr){
+                    m_ism.inc_ref(curr_arith->m_infeasible_st);
+                }
+                curr_st = m_ism.mk_union(old_value_interval, curr_arith->m_infeasible_st);
+                // happens for ==
+                if(m_ism.is_full(curr_st)){
+                    m_var_value_fixed[v] = true;
+                    continue;
+                }
+                m_ism.peek_in_complement(curr_st, false, w, true);
+                m_assignment.set(v, w);
+                return true;
+            }
+            return true;
         }
 
         void init_literals_delta(){
@@ -891,7 +719,7 @@ namespace nlsat {
 
             for(literal_index lit_index: cls->m_literals){
                 nra_literal * curr_literal = m_nra_literals[lit_index];
-                LSTRACE(tout << "loop literal: "; m_solver.display_literal(tout, curr_literal->m_literal); tout << std::endl;);
+                LSTRACE(tout << "loop literal: "; m_solver.display(tout, curr_literal->m_literal); tout << std::endl;);
                 if(curr_literal->get_sat_status()){
                     LSTRACE(tout << "sat literal\n";);
                     sat_count++;
@@ -923,7 +751,7 @@ namespace nlsat {
                 // bool variables in unsat clause increase score
                 for(literal_index bool_lit_idx: cls->m_bool_literals){
                     nra_literal const * unsat_literal = m_nra_literals[bool_lit_idx];
-                    LSTRACE(tout << "loop bool literal: "; m_solver.display_literal(tout, unsat_literal->m_literal); tout << std::endl;);
+                    LSTRACE(tout << "loop bool literal: "; m_solver.display(tout, unsat_literal->m_literal); tout << std::endl;);
                     SASSERT(unsat_literal->is_bool());
                     nra_bool_var * curr_bool = m_bool_vars[unsat_literal->get_bool_index()];
                     curr_bool->inc_score();
@@ -986,8 +814,7 @@ namespace nlsat {
             m_am.set(m_one, 1);
             m_am.set(m_two, 2);
             m_am.set(m_max, INT_MAX);
-            m_am.set(m_hundred, 100);
-            m_am.div(m_one, m_hundred, m_min);
+            m_am.div(m_one, m_max, m_min);
             LSTRACE(display_const_anum(tout););
         }
 
@@ -1133,10 +960,13 @@ namespace nlsat {
         }
 
         void collect_bool_values(){
-            m_bool_result.reset();
             for(bool_var b = 0; b < m_bool_vars.size(); b++){
-                m_bool_result.push_back(m_bool_vars[b]->get_value());
+                m_bvalues[m_bool_vars[b]->get_origin_index()] = b2lb(m_bool_vars[b]->get_value());
             }
+        }
+
+        static lbool b2lb(bool b) {
+            return b ? l_true : l_false;
         }
 
         bool_var select_best_from_bool_operations(int & best_score){
@@ -1177,7 +1007,7 @@ namespace nlsat {
         }
 
         /**
-         * Critical Move
+         * * Critical Move
          */
         bool_var pick_critical_bool_move(){
             LSTRACE(tout << "show time of start picking bool move\n";
@@ -1291,63 +1121,9 @@ namespace nlsat {
             return best_arith_index;
         }
 
-        unsigned pair_code(nra_literal const * l1, nra_literal const * l2) const {
-            unsigned id1 = l1->get_index(), id2 = l2->get_index();
-            SASSERT(id1 != id2);
-            if(id1 > id2){
-                unsigned copy = id1;
-                id1 = id2;
-                id2 = copy;
-            }
-            return id1 * m_nra_literals.size() + id2;
-        }
-
-        void add_pair_literal_arith_operation(nra_literal const * l1, nra_literal const * l2){
-            if(l1->get_index() == l2->get_index()){
-                return;
-            }
-            LSTRACE(tout << "add pair operation for literal\n";
-                m_solver.display_literal(tout, l1->m_literal); tout << std::endl;
-                m_solver.display_literal(tout, l2->m_literal); tout << std::endl;
-            );
-            unsigned index_code = pair_code(l1, l2);
-            if(m_literal_added.contains(index_code)){
-                return;
-            }
-            var_table common_vars;
-            get_common_vars(l1, l2, common_vars);
-            for(var v: common_vars){
-                nra_arith_var const * curr_arith = m_arith_vars[v];
-                if(m_step <= curr_arith->get_tabu()){
-                    continue;
-                }
-                interval_set_ref curr_st1(m_ism), curr_st2(m_ism);
-                curr_st1 = m_evaluator.infeasible_intervals(l1->get_atom(), l1->sign(), nullptr, v);
-                curr_st2 = m_evaluator.infeasible_intervals(l2->get_atom(), l2->sign(), nullptr, v);
-                if(curr_arith->m_infeasible_st != nullptr){
-                    m_ism.inc_ref(curr_arith->m_infeasible_st);
-                }
-                interval_set_ref union_st(m_ism);
-                union_st = m_ism.mk_union(curr_st1, curr_st2, curr_arith->m_infeasible_st);
-                if(m_ism.is_full(union_st)){
-                    continue;
-                }
-                insert_in_complement(v, union_st, index_code);
-            }
-        }
-
-        void get_common_vars(nra_literal const * l1, nra_literal const * l2, var_table & vars){
-            vars.reset();
-            for(var v: l1->m_vars){
-                if(l2->m_vars.contains(v)){
-                    vars.insert(v);
-                }
-            }
-        }
-
         void add_literal_arith_operation(nra_literal const * l){
             LSTRACE(tout << "add operation for literal\n";
-                m_solver.display_literal(tout, l->m_literal); tout << std::endl;
+                m_solver.display(tout, l->m_literal); tout << std::endl;
             );
             SASSERT(l->is_arith());
             if(m_literal_added.contains(l->get_index())){
@@ -1355,12 +1131,15 @@ namespace nlsat {
             }
             m_literal_added.insert(l->get_index());
             for(var v: l->m_vars){
+                LSTRACE(tout << "consider var " << v << std::endl;);
                 nra_arith_var const * curr_arith = m_arith_vars[v];
                 if(m_step <= curr_arith->get_tabu()){
                     continue;
                 }
                 interval_set_ref curr_st(m_ism);
-                curr_st = m_evaluator.infeasible_intervals(l->get_atom(), l->sign(), nullptr, v);
+                LSTRACE(tout << "atom is: "; m_solver.display_atom_ptr(tout, l->get_atom()); tout << std::endl;);
+                curr_st = m_evaluator.infeasible_intervals_sls(l->get_atom(), l->sign(), nullptr, v);
+                LSTRACE(tout << "set is: "; m_ism.display(tout, curr_st); tout << std::endl;);
                 if(m_ism.is_full(curr_st)){
                     continue;
                 }
@@ -1386,59 +1165,6 @@ namespace nlsat {
             );
             int best_arith_score;
             var best_arith_index;
-
-            // Level 0.
-            // consider pair literal operation in unsat clauses
-
-            // if(m_pair_cm == 1){
-            //     LSTRACE(tout << "LEVEL 0: consider pair literals in unsat clauses\n";);
-            //     reset_arith_operation();
-            //     SASSERT(m_unsat_clauses.empty());
-            //     // loop all unsat clauses, add pair literals
-            //     for(unsigned i = 0; i < m_unsat_clauses.size(); i++){
-            //         nra_clause const * cls1 = m_nra_clauses[i];
-            //         for(unsigned j = i + 1; j < m_unsat_clauses.size(); j++){
-            //             nra_clause const * cls2 = m_nra_clauses[j];
-            //             for(literal_index l1: cls1->m_arith_literals){
-            //                 nra_literal const * lit1 = m_nra_literals[l1];
-            //                 for(literal_index l2: cls2->m_arith_literals){
-            //                     nra_literal const * lit2 = m_nra_literals[l2];
-            //                     add_pair_literal_arith_operation(lit1, lit2);
-            //                 }
-            //             }
-            //         }
-            //     }
-            //     LSTRACE(display_arith_operations_level1(tout););
-            //     literal_index best_literal_index;
-            //     best_arith_score = 1;
-            //     best_arith_index = select_best_from_arith_operations_level1(best_arith_score, best_value, best_literal_index);
-            //     // var best_arith_index_level1 = select_best_from_arith_operations(INT_MIN, best_value_level1, best_literal_index_level1);
-            //     // untabu decreasing arith variable exists
-            //     if(best_arith_index != null_var){
-            //         LSTRACE(
-            //             tout << "LEVEL 0: choose var " << best_arith_index << std::endl;
-            //             tout << "show value: "; m_am.display(tout, best_value); tout << std::endl;
-            //             tout << "best literal index: " << best_literal_index << std::endl;
-            //         );
-            //         LSTRACE(tout << "show time of end picking nra move\n";
-            //             TimeElapsed();
-            //         );
-            //         return best_arith_index;
-            //     }
-            //     best_arith_score = 1;
-            //     best_arith_index = select_best_from_arith_operations_level2(best_arith_score, best_value, best_literal_index);
-            //     if(best_arith_index != null_var) {
-            //         LSTRACE(
-            //             tout << "LEVEL 0.5: choose var " << best_arith_index << std::endl;
-            //             tout << "show value: "; m_am.display(tout, best_value); tout << std::endl;
-            //             tout << "best literal index: " << best_literal_index << std::endl;
-            //         );
-            //         LSTRACE(tout << "show time of end picking nra move\n";
-            //             TimeElapsed();
-            //         );
-            //         return best_arith_index;
-            //     }
-            // }
 
             // Level I.
             // consider literal in unsat clauses
@@ -1475,18 +1201,15 @@ namespace nlsat {
             }
             LSTRACE(tout << "LEVEL I stuck\n";);
 
+
             // Level II.
             // consider sat clause with false literals
-            // var best_arith_index_level2;
-            // literal_index best_literal_index_level2;
-            // anum best_value_level2;
             LSTRACE(tout << "Level II: consider literals in sat clause\n";);
             if(!m_sat_clause_with_false_literals.empty()){
                 reset_arith_operation();
                 add_swap_operation();
                 best_arith_score = 1;
                 best_arith_index = select_best_from_arith_operations(best_arith_score, best_value, best_literal_index);
-                // best_arith_index_level2 = select_best_from_arith_operations(INT_MIN, best_value_level2, best_literal_index_level2);
                 if(best_arith_index != null_var){
                     LSTRACE(
                         tout << "LEVEL II: choose var " << best_arith_index << std::endl;
@@ -1501,29 +1224,8 @@ namespace nlsat {
             }
             LSTRACE(tout << "LEVEL II stuck\n";);
 
-            // // no untabu decreasing operation
-            // // Level III.
-            // // choose best from arith operation, move it
-            // LSTRACE(tout << "LEVEL III: consider best operation for unsat and sat (may increase)\n";);
-            // LSTRACE(display_arith_operations(tout););
-            // if(best_arith_index_level1 != null_var){
-            //     LSTRACE(tout << "LEVEL III: choose var " << best_arith_index_level1 << std::endl;
-            //         tout << "show value: "; m_am.display(tout, best_value_level1); tout << std::endl;
-            //     );
-            //     m_am.set(best_value, best_value_level1);
-            //     return best_arith_index_level1;
-            // }
-            // if(best_arith_index_level2 != null_var){
-            //     LSTRACE(tout << "LEVEL III: choose var " << best_arith_index_level2 << std::endl;
-            //         tout << "show value: "; m_am.display(tout, best_value_level2); tout << std::endl;
-            //     );
-            //     m_am.set(best_value, best_value_level2);
-            //     return best_arith_index_level2;
-            // }
-            // LSTRACE(tout << "LEVEL III stuck\n";);
-            
-
             // update clause weight
+            // ^ PAWS
             if(rand_int() % 10000 > smooth_probability){
                 update_clause_weight();
             }
@@ -1607,8 +1309,8 @@ namespace nlsat {
                 nra_literal * curr_literal = m_nra_literals[l_idx];
                 nra_clause const * curr_clause = m_nra_clauses[c_idx];
                 LSTRACE(
-                    tout << "consider literal: "; m_solver.display_literal(tout, curr_literal->m_literal); tout << std::endl;
-                    tout << "consider clause: "; m_solver.display_clause(tout, *curr_clause->get_clause()); tout << std::endl;
+                    tout << "consider literal: "; m_solver.display(tout, curr_literal->m_literal); tout << std::endl;
+                    tout << "consider clause: "; m_solver.display(tout, *curr_clause->get_clause()); tout << std::endl;
                 );
                 SASSERT(curr_literal->is_arith());
                 unsigned find_result = find_index_vector(m_literal_index_visited, l_idx);
@@ -1712,7 +1414,7 @@ namespace nlsat {
                 nra_literal * curr_literal = m_nra_literals[l_idx];
                 bool before_sat = curr_literal->get_sat_status();
                 LSTRACE(tout << "consider literal "; 
-                    m_solver.display_literal(tout, curr_literal->m_literal); tout << std::endl;
+                    m_solver.display(tout, curr_literal->m_literal); tout << std::endl;
                 );
                 // true --> false
                 if(before_sat){
@@ -1909,7 +1611,7 @@ namespace nlsat {
                 if(curr_clause->get_sat_count() == 1){
                     before_critical_index = curr_clause->get_critical_index();
                 }
-                LSTRACE(tout << "consider literal: "; m_solver.display_literal(tout, curr_literal->m_literal); tout << std::endl;);
+                LSTRACE(tout << "consider literal: "; m_solver.display(tout, curr_literal->m_literal); tout << std::endl;);
                 bool before_sat, after_sat;
                 // not found
                 unsigned find_result = find_index_vector(m_literal_index_visited, l_idx);
@@ -2073,20 +1775,23 @@ namespace nlsat {
             
             // intsert operations
             for(unsigned i = 0; i < 3 && m_bool_operation_index.size() + m_nra_operation_index.size() < 5; i++){
+                // ^ random choose a clause
                 clause_index c_idx = m_unsat_clauses[rand_int() % m_unsat_clauses.size()];
                 nra_clause const * curr_clause = m_nra_clauses[c_idx];
                 LSTRACE(tout << "consider clause "; m_solver.display(tout, *curr_clause->get_clause()); tout << std::endl;);
                 // LSTRACE(display_var_set(tout, curr_clause->m_arith_literals));
                 // loop arith literals
+                // ^ add arith literal operations in this clause
                 for(literal_index l_idx: curr_clause->m_arith_literals){
                     nra_literal const * curr_literal = m_nra_literals[l_idx];
                     add_literal_arith_operation(curr_literal);   
                 }
+                // ^ add bool literal operations in this clause
                 // loop bool literals
                 for(literal_index l_idx: curr_clause->m_bool_literals){
                     nra_literal const * curr_literal = m_nra_literals[l_idx];
                     SASSERT(curr_literal->is_bool());
-                    LSTRACE(tout << "consider literal "; m_solver.display_literal(tout, curr_literal->m_literal); tout << std::endl;);
+                    LSTRACE(tout << "consider literal "; m_solver.display(tout, curr_literal->m_literal); tout << std::endl;);
                     bool_var b = curr_literal->get_bool_index();
                     if(m_bool_is_chosen[b]){
                         continue;
@@ -2138,289 +1843,103 @@ namespace nlsat {
         }
 
         void no_operation_random_walk(){
-            SASSERT(!m_unsat_clauses.empty());
-            clause_index c_idx = m_unsat_clauses[rand_int() % m_unsat_clauses.size()];
-            nra_clause const * cls = m_nra_clauses[c_idx];
-            SASSERT(cls->size() != 0);
-            literal_index l_idx = cls->m_literals[rand_int() % cls->size()];
-            nra_literal const * lit = m_nra_literals[l_idx];
-            if(lit->is_bool()){
-                critical_bool_move(lit->get_bool_index());
-            }
-            else {
-                SASSERT(!lit->m_vars.empty());
-                var_vector non_zero_coeff_vars;
-                polynomial_ref lc(m_pm);
-                polynomial_ref curr_p(m_pm);
-                for(var v: lit->m_vars){
-                    curr_p = get_atom_polys(lit->get_atom());
-                    unsigned k = degree(curr_p, v);
-                    lc = m_pm.coeff(curr_p, v, k);
-                    if(m_am.eval_sign_at(lc, m_assignment) != 0){
-                        non_zero_coeff_vars.push_back(v);
-                    }
-                }
-                var picked_v = null_var;
-                // random choose one var
-                if(non_zero_coeff_vars.empty()){
-                    picked_v = random_table(lit->m_vars);
-                    SASSERT(picked_v != null_var);
-                }
-                else {
-                    picked_v = non_zero_coeff_vars[rand_int() % non_zero_coeff_vars.size()];
-                }
-                // choose value for picked arith var
-                anum w;
-                nra_arith_var const * curr_arith = m_arith_vars[picked_v];
-                scoped_anum old_value(m_am);
-                m_am.set(old_value, m_assignment.value(picked_v));
-                interval_set_ref old_value_interval(m_ism);
-                // [old_value, old_value]
-                old_value_interval = m_ism.mk_point_interval(old_value);
-                if(m_var_value_fixed[picked_v]){
-                    m_ism.peek_in_complement(old_value_interval, false, w, true);
-                }
-                else {
-                    interval_set_ref curr_st(m_ism);
-                    if(curr_arith->m_infeasible_st != nullptr){
-                        m_ism.inc_ref(curr_arith->m_infeasible_st);
-                    }
-                    curr_st = m_ism.mk_union(old_value_interval, curr_arith->m_infeasible_st);
-                    // happens for ==
-                    // in this case, we ignore infeasible set, and choose a value except old value
-                    if(m_ism.is_full(curr_st)){
-                        m_var_value_fixed[picked_v] = true;
-                        m_ism.peek_in_complement(old_value_interval, false, w, true);
-                    }
-                    // we sample values for the arith var, then check stuck situation
-                    else {
-                        anum_vector sample_values;
-                        // m_ism.peek_in_complement(curr_st, false, w, true);
-                        m_ism.peek_in_complement_heuristic(curr_st, sample_values);
-                        bool still_stuck = true;
-                        SASSERT(!sample_values.empty());
-                        for(auto ele: sample_values){
-                            m_assignment.set(picked_v, ele);
-                            if(!is_literal_stuck(lit)){
-                                m_am.set(w, ele);
-                                // restore assignment
-                                m_assignment.set(picked_v, old_value);
-                                still_stuck = false;
-                                break;
-                            }
-                            else {
-                                // restore assignment
-                                m_assignment.set(picked_v, old_value);
-                            }
-                        }
-                        // still stuck, we random select one value
-                        if(still_stuck){
-                            LSTRACE(tout << "still stuck\n";);
-                            // we use CAD
-                            // if(!cad_move(lit, picked_v, w)){
-                                // LSTRACE(std::cout << "cad failed\n";);
-                                // LSTRACE(tout << "cad failed, we random choose a value\n";);
-                                m_am.set(w, sample_values[rand_int() % sample_values.size()]);
-                            // }
-                            // else {
-                                // LSTRACE(std::cout << "cad succeed\n";);
-                            // }
-                        }
-                    }
-                }
-                critical_nra_move(picked_v, w);
-            }
+            m_no_operation = true;
+            // SASSERT(!m_unsat_clauses.empty());
+            // // ^ random select a clause
+            // clause_index c_idx = m_unsat_clauses[rand_int() % m_unsat_clauses.size()];
+            // nra_clause const * cls = m_nra_clauses[c_idx];
+            // SASSERT(cls->size() != 0);
+            // // ^ random select a literal
+            // literal_index l_idx = cls->m_literals[rand_int() % cls->size()];
+            // nra_literal const * lit = m_nra_literals[l_idx];
+            // // ^ bool critical move
+            // if(lit->is_bool()){
+            //     critical_bool_move(lit->get_bool_index());
+            // }
+            // else {
+            //     SASSERT(!lit->m_vars.empty());
+            //     var_vector non_zero_coeff_vars;
+            //     polynomial_ref lc(m_pm);
+            //     polynomial_ref curr_p(m_pm);
+            //     for(var v: lit->m_vars){
+            //         curr_p = get_atom_polys(lit->get_atom());
+            //         unsigned k = degree(curr_p, v);
+            //         lc = m_pm.coeff(curr_p, v, k);
+            //         if(m_am.eval_sign_at(lc, m_assignment) != 0){
+            //             non_zero_coeff_vars.push_back(v);
+            //         }
+            //     }
+            //     var picked_v = null_var;
+            //     // random choose one var
+            //     if(non_zero_coeff_vars.empty()){
+            //         picked_v = random_table(lit->m_vars);
+            //         SASSERT(picked_v != null_var);
+            //     }
+            //     else {
+            //         picked_v = non_zero_coeff_vars[rand_int() % non_zero_coeff_vars.size()];
+            //     }
+            //     // choose value for picked arith var
+            //     anum w;
+            //     nra_arith_var const * curr_arith = m_arith_vars[picked_v];
+            //     scoped_anum old_value(m_am);
+            //     m_am.set(old_value, m_assignment.value(picked_v));
+            //     interval_set_ref old_value_interval(m_ism);
+            //     // [old_value, old_value]
+            //     old_value_interval = m_ism.mk_point_interval(old_value);
+            //     if(m_var_value_fixed[picked_v]){
+            //         m_ism.peek_in_complement(old_value_interval, false, w, true);
+            //     }
+            //     else {
+            //         interval_set_ref curr_st(m_ism);
+            //         if(curr_arith->m_infeasible_st != nullptr){
+            //             m_ism.inc_ref(curr_arith->m_infeasible_st);
+            //         }
+            //         curr_st = m_ism.mk_union(old_value_interval, curr_arith->m_infeasible_st);
+            //         // happens for ==
+            //         // in this case, we ignore infeasible set, and choose a value except old value
+            //         if(m_ism.is_full(curr_st)){
+            //             m_var_value_fixed[picked_v] = true;
+            //             m_ism.peek_in_complement(old_value_interval, false, w, true);
+            //         }
+            //         // we sample values for the arith var, then check stuck situation
+            //         else {
+            //             anum_vector sample_values;
+            //             // m_ism.peek_in_complement(curr_st, false, w, true);
+            //             m_ism.peek_in_complement_heuristic(curr_st, sample_values);
+            //             bool still_stuck = true;
+            //             SASSERT(!sample_values.empty());
+            //             for(auto ele: sample_values){
+            //                 m_assignment.set(picked_v, ele);
+            //                 if(!is_literal_stuck(lit)){
+            //                     m_am.set(w, ele);
+            //                     // restore assignment
+            //                     m_assignment.set(picked_v, old_value);
+            //                     still_stuck = false;
+            //                     break;
+            //                 }
+            //                 else {
+            //                     // restore assignment
+            //                     m_assignment.set(picked_v, old_value);
+            //                 }
+            //             }
+            //             // still stuck, we random select one value
+            //             if(still_stuck){
+            //                 LSTRACE(tout << "still stuck\n";);
+            //                 // we use CAD
+            //                 // if(!cad_move(lit, picked_v, w)){
+            //                     LSTRACE(std::cout << "cad failed\n";);
+            //                     LSTRACE(tout << "cad failed, we random choose a value\n";);
+            //                     m_am.set(w, sample_values[rand_int() % sample_values.size()]);
+            //                 // }
+            //                 // else {
+            //                     LSTRACE(std::cout << "cad succeed\n";);
+            //                 // }
+            //             }
+            //         }
+            //     }
+            //     critical_nra_move(picked_v, w);
+            // }
         }
-
-        // v is the arith var we need to move
-        // bool cad_move(nra_literal const * l, var & picked_v, anum & w){
-        //     var before_var = picked_v;
-        //     LSTRACE(tout << "enter cad move\n";
-        //         tout << "var: " << picked_v << std::endl;
-        //     );
-        //     if(l->m_vars.size() <= 1){
-        //         return false;
-        //     }
-
-        //     poly const * p = get_atom_polys(l->get_atom());
-        //     var x = lowest_degree_var(l, p);
-        //     picked_v = lowest_degree_var_except(l, p, x);
-        //     SASSERT(picked_v != x && picked_v != null_var);
-        //     LSTRACE(tout << "lowest var: " << x << std::endl;);
-        //     SASSERT(x != null_var);
-        //     std::chrono::steady_clock::time_point m_before_projection = std::chrono::steady_clock::now();
-        //     polynomial_ref_vector project_polys(m_pm);
-        //     add_lc(p, x, project_polys);
-        //     std::chrono::steady_clock::time_point m_after_lc = std::chrono::steady_clock::now();
-        //     std::chrono::duration<double> dura1 = m_after_lc - m_before_projection;
-        //     LSTRACE(tout << "time of add lc: " << dura1.count() << " s\n";
-        //         std::cout << "time of add lc: " << dura1.count() << " s\n";
-        //     );
-        //     // level I. change value with leading coefficients
-        //     LSTRACE(tout << "after adding lc\n";);
-        //     LSTRACE(display_poly_vector(tout, project_polys));
-        //     simplify(project_polys, picked_v);
-        //     anum_vector roots_level1;
-        //     get_cell_infos(project_polys, picked_v, roots_level1);
-        //     LSTRACE(tout << "after adding lc, show roots in level1:\n";
-        //         display_anum_vector(tout, roots_level1);
-        //     );
-        //     remove_duplicate(roots_level1);
-        //     unsigned cell_num_level1 = 2 * roots_level1.size() + 1;
-        //     if(cell_num_level1 > 1){
-        //         unsigned curr_index = find_cell_index(roots_level1, m_assignment.value(picked_v));
-        //         LSTRACE(tout << "curr index: " << curr_index << std::endl;);
-        //         anum old_value;
-        //         m_am.set(old_value, m_assignment.value(picked_v));
-        //         if(cell_num_level1 <= 9){
-        //             for(unsigned i = 0; i < cell_num_level1; i++){
-        //                 if(i == curr_index){
-        //                     continue;
-        //                 }
-        //                 LSTRACE(tout << "show index: " << i << std::endl;);
-        //                 anum sample_value;
-        //                 choose_sample(roots_level1, i, sample_value);
-        //                 LSTRACE(tout << "show sample: "; m_am.display(tout, sample_value); tout << std::endl;);
-        //                 m_assignment.set(picked_v, sample_value);
-        //                 if(!is_literal_stuck(l)){
-        //                     LSTRACE(tout << "cad succeed\n";);
-        //                     // restore assignment
-        //                     m_assignment.set(picked_v, old_value);
-        //                     m_am.set(w, sample_value);
-        //                     m_cad_succeed++;
-        //                     return true;   
-        //                 }
-        //                 LSTRACE(tout << "cad failed\n";);
-        //             }
-        //             // restore assignment
-        //             m_assignment.set(picked_v, old_value);
-        //         }
-        //         // random choose 9
-        //         else {
-        //             var_vector idx_vec;
-        //             for(unsigned i = 0; i < cell_num_level1; i++){
-        //                 idx_vec.push_back(i);
-        //             }
-        //             var_vector choice_vec;
-        //             random_choose(idx_vec, 9, choice_vec);
-        //             SASSERT(choice_vec.size() == 9);
-        //             for(unsigned i = 0; i < choice_vec.size(); i++){
-        //                 if(choice_vec[i] == curr_index){
-        //                     continue;
-        //                 }
-        //                 LSTRACE(tout << "show index: " << choice_vec[i] << std::endl;);
-        //                 anum sample_value;
-        //                 choose_sample(roots_level1, choice_vec[i], sample_value);
-        //                 LSTRACE(tout << "show sample: "; m_am.display(tout, sample_value); tout << std::endl;);
-        //                 m_assignment.set(picked_v, sample_value);
-        //                 if(!is_literal_stuck(l)){
-        //                     LSTRACE(tout << "cad succeed\n";);
-        //                     // restore assignment
-        //                     m_assignment.set(picked_v, old_value);
-        //                     m_am.set(w, sample_value);
-        //                     m_cad_succeed++;
-        //                     return true;   
-        //                 }
-        //                 LSTRACE(tout << "cad failed\n";);
-        //             }
-        //             // restore assignment
-        //             m_assignment.set(picked_v, old_value);
-        //         }
-        //     }
-        //     LSTRACE(tout << "levelI failed, enter levelII\n";);
-
-
-        //     add_discriminant(p, x, project_polys);
-        //     std::chrono::steady_clock::time_point m_after_projection = std::chrono::steady_clock::now();
-        //     std::chrono::duration<double> dura = m_after_projection - m_before_projection;
-        //     LSTRACE(tout << "time of projection: " << dura.count() << " s\n";
-        //         std::cout << "time of projection: " << dura.count() << " s\n";
-        //     );
-        //     LSTRACE(tout << "after projection\n";);
-        //     LSTRACE(display_poly_vector(tout, project_polys));
-        //     // only save polynomials which have v
-        //     simplify(project_polys, picked_v);
-        //     LSTRACE(tout << "after simplify\n";);
-        //     LSTRACE(display_poly_vector(tout, project_polys));
-        //     anum_vector roots;
-        //     get_cell_infos(project_polys, picked_v, roots);
-        //     LSTRACE(tout << "after get cell infos\n";);
-        //     LSTRACE(tout << "show roots:\n";
-        //         display_anum_vector(tout, roots);
-        //     );
-        //     remove_duplicate(roots);
-        //     unsigned cell_num = 2 * roots.size() + 1;
-        //     LSTRACE(tout << "show cell num: " << cell_num << std::endl;);
-        //     LSTRACE(tout << "show roots:\n";
-        //         display_anum_vector(tout, roots);
-        //     );
-        //     if(cell_num == 1){
-        //         LSTRACE(tout << "cell num is one, cad fail\n";);
-        //         // restore var
-        //         picked_v = before_var;
-        //         return false;
-        //     }
-        //     unsigned curr_index = find_cell_index(roots, m_assignment.value(picked_v));
-        //     LSTRACE(tout << "curr index: " << curr_index << std::endl;);
-        //     anum old_value;
-        //     m_am.set(old_value, m_assignment.value(picked_v));
-        //     if(cell_num <= 9){
-        //         for(unsigned i = 0; i < cell_num; i++){
-        //             if(i == curr_index){
-        //                 continue;
-        //             }
-        //             LSTRACE(tout << "show index: " << i << std::endl;);
-        //             anum sample_value;
-        //             choose_sample(roots, i, sample_value);
-        //             LSTRACE(tout << "show sample: "; m_am.display(tout, sample_value); tout << std::endl;);
-        //             m_assignment.set(picked_v, sample_value);
-        //             if(!is_literal_stuck(l)){
-        //                 LSTRACE(tout << "cad succeed\n";);
-        //                 m_assignment.set(picked_v, old_value);
-        //                 m_am.set(w, sample_value);
-        //                 m_cad_succeed++;
-        //                 return true;   
-        //             }
-        //             LSTRACE(tout << "cad failed\n";);
-        //         }
-        //         m_assignment.set(picked_v, old_value);
-        //         // restore var
-        //         picked_v = before_var;
-        //         return false;
-        //     }
-        //     // random choose 9
-        //     else {
-        //         var_vector idx_vec;
-        //         for(unsigned i = 0; i < cell_num; i++){
-        //             idx_vec.push_back(i);
-        //         }
-        //         var_vector choice_vec;
-        //         random_choose(idx_vec, 9, choice_vec);
-        //         SASSERT(choice_vec.size() == 9);
-        //         for(unsigned i = 0; i < choice_vec.size(); i++){
-        //             if(choice_vec[i] == curr_index){
-        //                 continue;
-        //             }
-        //             LSTRACE(tout << "show index: " << choice_vec[i] << std::endl;);
-        //             anum sample_value;
-        //             choose_sample(roots, choice_vec[i], sample_value);
-        //             LSTRACE(tout << "show sample: "; m_am.display(tout, sample_value); tout << std::endl;);
-        //             m_assignment.set(picked_v, sample_value);
-        //             if(!is_literal_stuck(l)){
-        //                 LSTRACE(tout << "cad succeed\n";);
-        //                 m_assignment.set(picked_v, old_value);
-        //                 m_am.set(w, sample_value);
-        //                 m_cad_succeed++;
-        //                 return true;   
-        //             }
-        //             LSTRACE(tout << "cad failed\n";);
-        //         }
-        //         // restore var
-        //         picked_v = before_var;
-        //         m_assignment.set(picked_v, old_value);
-        //         return false;
-        //     }
-        // }
 
         void random_choose(var_vector const & vec, unsigned num, var_vector & res){
             res.reset();
@@ -2520,187 +2039,11 @@ namespace nlsat {
             return false;
         }
 
-        void get_cell_infos(polynomial_ref_vector const & ps, var v, anum_vector & vec){
-            vec.reset();
-            polynomial_ref p(m_pm);
-            for(unsigned i = 0; i < ps.size(); i++){
-                p = ps.get(i);
-                LSTRACE(tout << "show curr poly:\n";
-                    m_pm.display(tout, p); tout << std::endl;
-                );
-                anum_vector curr;
-                m_am.isolate_roots(p, undef_var_assignment(m_assignment, v), curr);
-                LSTRACE(display_anum_vector(tout, curr););
-                for(auto ele: curr){
-                    if(!contains_value(vec, ele)){
-                        vec.push_back(ele);
-                    }
-                }
-            }
-            anum_heap_sort(vec);
-        }
-
-        void shiftdown(anum_vector & vec, int n, int i){
-            int k = i;
-            while(2 * k + 1 < n){
-                int j = 2 * k + 1;
-                if((j+1<n) && m_am.lt(vec[j], vec[j+1])){
-                    j++;
-                }
-                if(m_am.lt(vec[k], vec[j])){
-                    m_am.swap(vec[k], vec[j]);
-                    k = j;
-                    continue;
-                }
-                break;
-            }
-        }
-
-        void anum_heap_sort(anum_vector & vec){
-            LSTRACE(tout << "before sort:\n";
-                display_anum_vector(tout, vec);
-            );
-            int n = vec.size();
-            for(int i = (n-1)/2; i >= 0; i--){
-                shiftdown(vec, n, i);
-            }
-            for(int i = n-1; i > 0; i--){
-                m_am.swap(vec[0], vec[i]);
-                shiftdown(vec, i, 0);
-            }
-            LSTRACE(tout << "after sort:\n";
-                display_anum_vector(tout, vec);
-            );
-        }
-
-        void simplify(polynomial_ref_vector & res, var v){
-            polynomial_ref curr(m_pm);
-            unsigned j = 0;
-            for(unsigned i = 0; i < res.size(); i++){
-                curr = res.get(i);
-                var_vector vars;
-                m_pm.vars(curr, vars);
-                if(vars.contains(v)){
-                    res[j++] = curr;
-                }
-            }
-            res.shrink(j);
-        }
-
-
-        void add_lc(poly const * p, var x, polynomial_ref_vector & res){
-            unsigned k = m_pm.degree(p, x);
-            SASSERT(k > 0);
-            if(m_pm.nonzero_const_coeff(p, x, k)){
-                return;
-            }
-            while(true){
-                polynomial_ref lc(m_pm);
-                lc = m_pm.coeff(p, x, k);
-                add_factors(lc, res);
-                if(!is_zero(lc) && ::is_zero(m_am.eval_sign_at(lc, m_assignment))){
-                    break;
-                }
-                if(k == 0){
-                    break;
-                }
-                k--;
-            }
-        }
-
-        void add_discriminant(poly const * p, var x, polynomial_ref_vector & res){
-            if(m_pm.degree(p, x) < 2){
-                return;
-            }
-            polynomial_ref p_prime(m_pm);
-            p_prime = m_pm.derivative(p, x);
-            polynomial_ref_vector temp(m_pm);
-            std::chrono::steady_clock::time_point m_before_psc = std::chrono::steady_clock::now();
-            psc_chain(p, p_prime, x, temp);
-            std::chrono::steady_clock::time_point m_after_psc = std::chrono::steady_clock::now();
-            std::chrono::duration<double> psc_dura = m_after_psc - m_before_psc;
-            LSTRACE(tout << "time of psc: " << psc_dura.count() << " s\n";
-                std::cout << "time of psc: " << psc_dura.count() << " s\n";
-            );
-            polynomial_ref curr(m_pm);
-            for(unsigned i = 0; i < temp.size(); i++){
-                curr = temp.get(i);
-                if(is_zero(curr) || is_const(curr) || is_zero(m_am.eval_sign_at(curr, m_assignment))){
-                    LSTRACE(tout << "continue\n";);
-                    continue;
-                }
-                LSTRACE(tout << "here\n";
-                    std::cout << "here\n";
-                );
-                std::chrono::steady_clock::time_point m_before_factor = std::chrono::steady_clock::now();
-                add_factors(curr, res);
-                std::chrono::steady_clock::time_point m_after_factor = std::chrono::steady_clock::now();
-                std::chrono::duration<double> factor_dura = m_after_factor - m_before_factor;
-                LSTRACE(tout << "time of factor: " << factor_dura.count() << " s\n";
-                    std::cout << "time of factor: " << factor_dura.count() << " s\n";
-                );
-            }
-        }
-
-        void psc_chain(poly const * p, polynomial_ref & q, var x, polynomial_ref_vector & res){
-            m_cache.psc_chain(p, q, x, res);
-        }
-
-        void add_factors(polynomial_ref const & p, polynomial_ref_vector & res){
-            if(is_const(p)){
-                return;
-            }
-            if(use_factor){
-                temp_factors.reset();
-                m_cache.factor(p, temp_factors);
-                polynomial_ref f(m_pm);
-                for(unsigned i = 0; i < temp_factors.size(); i++){
-                    f = temp_factors.get(i);
-                    if(!is_const(f)){
-                        res.push_back(f);
-                    }
-                }
-            }
-            else {
-                res.push_back(p);
-            }
-        }
-
-        var lowest_degree_var_except(nra_literal const * l, poly const * p, var x) const { 
-            SASSERT(l->m_vars.size() >= 2);           
-            unsigned min_degree = UINT_MAX;
-            var res = null_var;
-            for(var v: l->m_vars){
-                if(v == x){
-                    continue;
-                }
-                unsigned curr_degree = m_pm.degree(p, v);
-                if(curr_degree < min_degree){
-                    min_degree = curr_degree;
-                    res = v;
-                }
-            }
-            return res;
-        }
-
-        var lowest_degree_var(nra_literal const * l, poly const * p) const {
-            unsigned min_degree = UINT_MAX;
-            var res = null_var;
-            for(var v: l->m_vars){
-                unsigned curr_degree = m_pm.degree(p, v);
-                if(curr_degree < min_degree){
-                    min_degree = curr_degree;
-                    res = v;
-                }
-            }
-            return res;
-        }
-
         bool is_literal_stuck(nra_literal const * l){
             LSTRACE(tout << "enter literal stuck\n";);
             for(var v: l->m_vars){
                 interval_set_ref curr_st(m_ism), union_st(m_ism);
-                curr_st = m_evaluator.infeasible_intervals(l->get_atom(), l->sign(), nullptr, v);
+                curr_st = m_evaluator.infeasible_intervals_sls(l->get_atom(), l->sign(), nullptr, v);
                 if(m_ism.is_full(curr_st)){
                     continue;
                 }
@@ -2795,7 +2138,7 @@ namespace nlsat {
         /**
          * Local Search
          */
-        local_search_result local_search(){
+        lbool local_search(){
             SPLIT_LINE(tout);
             LSTRACE(tout << "local search begin\n";
                 std::cout << "local search begin\n";
@@ -2804,8 +2147,13 @@ namespace nlsat {
             no_improve_cnt = 0;
             m_start_time = std::chrono::steady_clock::now();
             m_step = 0;
+            // ICP returns false
+            if(!init_solution(true)){
+                LSTRACE(std::cout << "ICP returns false\n";);
+                LSTRACE(tout << "ICP returns false\n";);
+                return l_false;
+            }
             m_outer_step = 1;
-            init_solution_from_bvalues();
             for(m_step = 1; m_step < max_step; m_step++){
                 m_stuck_ratio = 1.0 * m_stuck / m_step;
                 LSTRACE(tout << "step: " << m_step << std::endl;
@@ -2823,16 +2171,14 @@ namespace nlsat {
                     collect_bool_values();
                     check_solution_sat();
                     propagate_sub_values();
-                    return std::make_pair(l_true, m_bool_result);
+                    return l_true;
                 }
                 // Fail
                 if(TimeElapsed() > m_cutoff && m_step % 100 == 0){
                     SPLIT_LINE(std::cout);
                     LSTRACE(std::cout << "local search failed\n";);
                     SPLIT_LINE(std::cout);
-
-                    m_bool_result.reset();
-                    return std::make_pair(l_undef, m_bool_result);
+                    return l_undef;
                 }
                 // Main
                 LSTRACE(tout << "enter main procedure\n";);
@@ -2898,16 +2244,128 @@ namespace nlsat {
                         SPLIT_LINE(std::cout);
                         SPLIT_LINE(tout);
                     );
-                    m_restart++;
                     init_solution(false);
                     no_improve_cnt = 0;
                 }
             }
-            m_bool_result.reset();
             SPLIT_LINE(std::cout);
             LSTRACE(std::cout << "local search failed\n";);
             SPLIT_LINE(std::cout);
-            return std::make_pair(l_undef, m_bool_result);
+            return l_undef;
+        }
+
+        /**
+        * * relaxed local search
+        */
+        lbool relaxed_local_search() {
+            no_improve_cnt = 0;
+            m_start_time = std::chrono::steady_clock::now();
+            m_step = 0;
+            init_solution_from_assignment();
+            m_outer_step = 1;
+            for(m_step = 1; m_step < relaxed_max_step; m_step++){
+                m_no_operation = false;
+                m_stuck_ratio = 1.0 * m_stuck / m_step;
+                LSTRACE(tout << "step: " << m_step << std::endl;
+                    tout << "no improve cnt: " << no_improve_cnt << std::endl;
+                );
+                // Succeed
+                if(m_unsat_clauses.empty()){
+                    SPLIT_LINE(std::cout);
+                    LSTRACE(
+                        std::cout << "local search succeed\n";
+                        tout << "local search succeed\n";
+                    );
+                    SPLIT_LINE(std::cout);
+                    
+                    collect_bool_values();
+                    check_solution_sat();
+                    // propagate_sub_values();
+                    return l_true;
+                }
+                // Fail
+                if(TimeElapsed() > m_relaxed_cutoff){
+                    SPLIT_LINE(std::cout);
+                    LSTRACE(std::cout << "local search failed\n";);
+                    SPLIT_LINE(std::cout);
+                    return l_undef;
+                }
+                // Main
+                LSTRACE(tout << "enter main procedure\n";);
+                bool time_up_bool = no_improve_cnt_bool * m_num_unsat_literals > 5 * m_num_bool_unsat_literals;
+                bool time_up_nra = no_improve_cnt_nra * m_num_unsat_literals > 20 * (m_num_unsat_literals - m_num_bool_unsat_literals);
+                // Choose Mode
+                if(m_num_bool_unsat_literals == 0 || (is_bool_search && time_up_bool && m_num_bool_unsat_literals < m_num_unsat_literals)){
+                    enter_nra_mode();
+                }
+                else if(m_num_unsat_literals == m_num_bool_unsat_literals || (!is_bool_search && time_up_nra && m_num_bool_unsat_literals > 0)){
+                    enter_bool_mode();
+                }
+                // Search
+                if(is_bool_search){
+                    // pick bool variable
+                    bool_var picked_b = pick_critical_bool_move();
+                    LSTRACE(tout << "picked bool var: " << picked_b << std::endl;);
+                    if(picked_b != null_var){
+                        critical_bool_move(picked_b);
+                    }
+                    // update bool improvement
+                    if(update_bool_info()){
+                        no_improve_cnt_bool = 0;
+                    }
+                    else {
+                        no_improve_cnt_bool++;
+                    }
+                }
+                else {
+                    // pick arith variable and next value
+                    scoped_anum next_value(m_am);
+                    var picked_v = pick_critical_nra_move(next_value);
+                    LSTRACE(tout << "picked arith var: " << picked_v << std::endl;
+                            tout << "picked arith value: "; m_am.display(tout, next_value); tout << std::endl;
+                    );
+                    if(picked_v != null_var){
+                        critical_nra_move(picked_v, next_value);
+                    }
+                    // update arith improvement
+                    if(update_nra_info()){
+                        no_improve_cnt_nra = 0;
+                    }
+                    else {
+                        no_improve_cnt_nra++;
+                    }
+                }
+                // no operation, just return undef
+                if(m_no_operation) {
+                    return l_undef;
+                }
+                // update improvement
+                if(update_solution_info()){
+                    no_improve_cnt = 0;
+                }
+                else {
+                    no_improve_cnt++;
+                }
+
+                // Restart
+                // if(no_improve_cnt > 500000){
+                if(no_improve_cnt > 10000){
+                    LSTRACE(tout << "no improve count: " << no_improve_cnt << std::endl;
+                        tout << "restart\n";
+                        SPLIT_LINE(std::cout);
+                        SPLIT_LINE(tout);
+                        std::cout << "no improve, restart\n";
+                        SPLIT_LINE(std::cout);
+                        SPLIT_LINE(tout);
+                    );
+                    init_solution(false);
+                    no_improve_cnt = 0;
+                }
+            }
+            SPLIT_LINE(std::cout);
+            LSTRACE(std::cout << "local search failed\n";);
+            SPLIT_LINE(std::cout);
+            return l_undef;
         }
 
         void check_solution_sat() const {
@@ -2983,7 +2441,7 @@ namespace nlsat {
         std::ostream & display_literal_set(std::ostream & out, var_vector const & vec) const {
             for(literal_index v: vec){
                 literal l = m_nra_literals[v]->m_literal;
-                m_solver.display_literal(out, l);
+                m_solver.display(out, l);
                 out << " ";
             }
             return out;
@@ -3085,7 +2543,7 @@ namespace nlsat {
             out << "show literal index vector\n";
             for(unsigned i = 0; i < vec.size(); i++){
                 out << i << " ";
-                m_solver.display_literal(out, m_nra_literals[vec[i]]->m_literal);
+                m_solver.display(out, m_nra_literals[vec[i]]->m_literal);
                 out << std::endl;
             }
             return out;
@@ -3139,38 +2597,14 @@ namespace nlsat {
             }
             return out;
         }
-
-        std::ostream & display_poly_bound_state(std::ostream & out, poly_bound_state s) const {
-            switch(s){
-                case EQ:
-                    out << "==\n";
-                    break;
-                case NEQ:
-                    out << "!=\n";
-                    break;
-                case GT:
-                    out << ">\n";
-                    break;
-                case GE:
-                    out << ">=\n";
-                    break;
-                case LT:
-                    out << "<\n";
-                    break;
-                case LE:
-                    out << "<=\n";
-                    break;
-                default:
-                    UNREACHABLE();
-            }
-            return out;
-        }
     };
 
     ls_helper::ls_helper(solver & s, anum_manager & am, pmanager & pm, polynomial::cache & cache, interval_set_manager & ism, evaluator & ev, 
-                         assignment & ass, svector<lbool> const & bvalues, clause_vector const & cls, atom_vector const & ats, bool_vector const & dead, unsigned seed, unsigned & step, 
-                         unsigned & stuck, unsigned & restart, double & ratio, substitute_value_vector const & vec){
-        m_imp = alloc(imp, s, am, pm, cache, ism, ev, ass, bvalues, cls, ats, dead, seed, step, stuck, restart, ratio, vec);
+                         assignment & ass, svector<lbool> & bvalues, clause_vector const & cls, atom_vector const & ats, bool_var_vector const & pure_bool_vars, 
+                         bool_var_vector const & pure_bool_convert, 
+                        unsigned seed, unsigned & step, unsigned & stuck, double & ratio, substitute_value_vector const & vec
+                         ){
+        m_imp = alloc(imp, s, am, pm, cache, ism, ev, ass, bvalues, cls, ats, pure_bool_vars, pure_bool_convert, seed, step, stuck, ratio, vec);
     }
 
     ls_helper::~ls_helper(){
@@ -3181,7 +2615,11 @@ namespace nlsat {
         m_imp->set_var_num(x);
     }
 
-    local_search_result ls_helper::local_search(){
+    lbool ls_helper::local_search(){
         return m_imp->local_search();
+    }
+
+    lbool ls_helper::relaxed_local_search() {
+        return m_imp->relaxed_local_search();
     }
 };

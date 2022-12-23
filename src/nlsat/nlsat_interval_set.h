@@ -22,13 +22,7 @@ Revision History:
 #include "math/polynomial/algebraic_numbers.h"
 
 namespace nlsat {
-   // poly bound for local search
-   enum poly_bound_state {
-      GT, GE, LT, LE, EQ, NEQ
-   };
-   // poly bound for local search
-
-   struct interval {
+      struct interval {
         unsigned  m_lower_open:1;
         unsigned  m_upper_open:1;
         unsigned  m_lower_inf:1;
@@ -82,7 +76,7 @@ namespace nlsat {
         interval_set * mk_full();
         bool contains_zero(interval_set const * s) const;
         bool interval_contains_zero(interval inter) const;
-
+   
         bool peek_in_complement_zero(interval_set const * s, anum & w);
         bool peek_in_complement_lower_int(interval_set const * s, anum & w);
         bool peek_in_complement_lower_far(interval_set const * s, anum & w);
@@ -93,10 +87,6 @@ namespace nlsat {
         void peek_in_complement_threshold_integer(interval_set const * s, anum_vector & vec);
 
         void peek_in_complement_heuristic(interval_set const * s, anum_vector & vec);
-        void peek_in_complement_heuristic_level1(interval_set const * s, anum_vector & vec);
-        void peek_in_complement_heuristic_level2(interval_set const * s, anum_vector & vec);
-
-        interval_set * mk_bound_interval(anum const & w, poly_bound_state s);
         // hzw ls
         
         /**
@@ -162,6 +152,5 @@ namespace nlsat {
         s.m().display(out, s);
         return out;
     }
-
 };
 

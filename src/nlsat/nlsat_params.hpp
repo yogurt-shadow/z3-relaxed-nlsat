@@ -10,7 +10,6 @@ struct nlsat_params {
      p(_p), g(gparams::get_module("nlsat")) {}
   static void collect_param_descrs(param_descrs & d) {
     d.insert("max_memory", CPK_UINT, "maximum amount of memory in megabytes", "4294967295","nlsat");
-    d.insert("linxi_simple_check", CPK_BOOL, "linxi precheck about variables sign", "false","nlsat");
     d.insert("lazy", CPK_UINT, "how lazy the solver is.", "0","nlsat");
     d.insert("reorder", CPK_BOOL, "reorder variables.", "true","nlsat");
     d.insert("log_lemmas", CPK_BOOL, "display lemmas as self-contained SMT formulas", "false","nlsat");
@@ -23,13 +22,20 @@ struct nlsat_params {
     d.insert("inline_vars", CPK_BOOL, "inline variables that can be isolated from equations (not supported in incremental mode)", "false","nlsat");
     d.insert("seed", CPK_UINT, "random seed.", "0","nlsat");
     d.insert("factor", CPK_BOOL, "factor polynomials produced during conflict resolution.", "true","nlsat");
+    // nra local search
+    d.insert("local_search", CPK_BOOL, "local search for nra.", "false","nlsat");
+    d.insert("local_search_simplify", CPK_BOOL, "local search simplify for nra.", "false", "nlsat");
+    // nra local search
+
+    // relaxed nlsat
+    d.insert("relaxed_nlsat", CPK_BOOL, "relaxed nlsat for nra.", "false", "nlsat");
+    // relaxed nlsat
   }
   /*
      REG_MODULE_PARAMS('nlsat', 'nlsat_params::collect_param_descrs')
      REG_MODULE_DESCRIPTION('nlsat', 'nonlinear solver')
   */
   unsigned max_memory() const { return p.get_uint("max_memory", g, 4294967295u); }
-  bool linxi_simple_check() const { return p.get_bool("linxi_simple_check", g, false); }
   unsigned lazy() const { return p.get_uint("lazy", g, 0u); }
   bool reorder() const { return p.get_bool("reorder", g, true); }
   bool log_lemmas() const { return p.get_bool("log_lemmas", g, false); }
@@ -42,5 +48,8 @@ struct nlsat_params {
   bool inline_vars() const { return p.get_bool("inline_vars", g, false); }
   unsigned seed() const { return p.get_uint("seed", g, 0u); }
   bool factor() const { return p.get_bool("factor", g, true); }
+  bool local_search() const { return p.get_bool("local_search", g, false); }
+  bool local_search_simplify() const { return p.get_bool("local_search_simplify", g, false); }
+  bool relaxed_nlsat() const { return p.get_bool("relaxed_nlsat", g, false); }
 };
 #endif

@@ -22,7 +22,6 @@ Revision History:
 #include "util/buffer.h"
 #include "sat/sat_types.h"
 #include "util/z3_exception.h"
-#include "util/hashtable.h"
 
 namespace algebraic_numbers {
     class anum;
@@ -163,25 +162,5 @@ namespace nlsat {
         if (s == 0) return 0;
         return 1;
     }
-
-    // hastable for var
-    struct var_hash {
-        unsigned operator()(var x) const {
-            return x;
-        }
-    };
-
-    struct var_eq {
-        bool operator()(var x, var y) const {
-            return x == y;
-        }
-    };
-
-    using var_table = hashtable<var, var_hash, var_eq>;
-    using bool_var_table = var_table;
-    using hybrid_var_table = var_table;
-    using hybrid_var_pair = std::pair<var, var>;
-    using var_vector_vector = vector<var_vector>;
-    using var_table_vector = vector<var_table>;
 };
 

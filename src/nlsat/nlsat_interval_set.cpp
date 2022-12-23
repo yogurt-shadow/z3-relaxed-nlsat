@@ -785,88 +785,6 @@ namespace nlsat {
         return mk_complement(mk_union(mk_complement(s1), mk_complement(s2)));
     }
 
-    interval_set * interval_set_manager::mk_bound_interval(anum const & w, poly_bound_state s) {
-        interval_buffer result;
-        // [a, a]
-        if(s == EQ){
-            interval inter;
-            inter.m_lower_inf = false;
-            inter.m_upper_inf = false;
-            inter.m_lower_open = false;
-            inter.m_upper_open = false;
-            m_am.set(inter.m_lower, w);
-            m_am.set(inter.m_upper, w);
-            push_back(m_am, result, inter);
-        }
-        // (-oo, a) (a, +oo)
-        else if(s == NEQ){
-            interval inter1, inter2;
-            inter1.m_lower_inf = true;
-            inter1.m_lower_open = true;
-            m_am.set(inter1.m_lower, m_zero);
-            inter1.m_upper_inf = false;
-            inter1.m_upper_open = true;
-            m_am.set(inter1.m_upper, w);
-            push_back(m_am, result, inter1);
-
-            inter2.m_lower_inf = false;
-            inter2.m_lower_open = true;
-            m_am.set(inter2.m_lower, w);
-            inter2.m_upper_inf = true;
-            inter2.m_upper_open = true;
-            m_am.set(inter2.m_upper, m_zero);
-            push_back(m_am, result, inter2);
-        }
-        // (a, +oo)
-        else if(s == GT){
-            interval inter;
-            inter.m_lower_inf = false;
-            inter.m_lower_open = true;
-            m_am.set(inter.m_lower, w);
-            inter.m_upper_inf = true;
-            inter.m_upper_open = true;
-            m_am.set(inter.m_upper, m_zero);
-            push_back(m_am, result, inter);
-        }
-        // [a, +oo)
-        else if(s == GE){
-            interval inter;
-            inter.m_lower_inf = false;
-            inter.m_lower_open = false;
-            m_am.set(inter.m_lower, w);
-            inter.m_upper_inf = true;
-            inter.m_upper_open = true;
-            m_am.set(inter.m_upper, m_zero);
-            push_back(m_am, result, inter);
-        }
-        // (-oo, a)
-        else if(s == LT){
-            interval inter;
-            inter.m_lower_inf = true;
-            inter.m_lower_open = true;
-            m_am.set(inter.m_lower, m_zero);
-            inter.m_upper_inf = false;
-            inter.m_upper_open = true;
-            m_am.set(inter.m_upper, w);
-            push_back(m_am, result, inter);
-        }
-        // (-oo, a]
-        else if(s == LE){
-            interval inter;
-            inter.m_lower_inf = true;
-            inter.m_lower_open = true;
-            m_am.set(inter.m_lower, m_zero);
-            inter.m_upper_inf = false;
-            inter.m_upper_open = false;
-            m_am.set(inter.m_upper, w);
-            push_back(m_am, result, inter);
-        }
-        else {
-            UNREACHABLE();
-        }
-        return mk_interval(m_allocator, result, false);
-    }
-
     bool interval_set_manager::contains_zero(interval_set const * s) const {
         if(s == nullptr){
             return false;
@@ -893,24 +811,6 @@ namespace nlsat {
         return left && right;
     }
 
-    void interval_set_manager::peek_in_complement_heuristic_level1(interval_set const * s, anum_vector & vec){
-        vec.reset();
-        anum_vector threshold_value;
-        peek_in_complement_threshold(s, threshold_value);
-        for(auto ele: threshold_value){
-            vec.push_back(ele);
-        }
-    }
-
-    void interval_set_manager::peek_in_complement_heuristic_level2(interval_set const * s, anum_vector & vec){
-        vec.reset();
-        anum_vector threshold_integer_value;
-        peek_in_complement_threshold_integer(s, threshold_integer_value);
-        for(auto ele: threshold_integer_value){
-            vec.push_back(ele);
-        }
-    }
-
     void interval_set_manager::peek_in_complement_heuristic(interval_set const * s, anum_vector & vec){
         TRACE("nlsat_ls", tout << "show set of insertion:\n";
             display(tout, s);
@@ -923,11 +823,11 @@ namespace nlsat {
         vec.push_back(w1);
 
         // // zero
-        anum w2;
-        if(peek_in_complement_zero(s, w2)){
-            SASSERT(m_am.is_zero(w2));
-            vec.push_back(w2);
-        }
+        // anum w2;
+        // if(peek_in_complement_zero(s, w2)){
+        //     SASSERT(m_am.is_zero(w2));
+        //     vec.push_back(w2);
+        // }
 
         // // integer lower bound
         // anum lower_w;
