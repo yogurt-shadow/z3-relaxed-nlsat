@@ -33,20 +33,23 @@ static tactic * mk_qfnra_sat_solver(ast_manager& m, params_ref const& p, unsigne
 }
 
 tactic * mk_qfnra_tactic(ast_manager & m, params_ref const& p) {
-    params_ref p0 = p;
-    p0.set_bool("inline_vars", true);
-    params_ref p1 = p;    
-    p1.set_uint("seed", 11);
-    p1.set_bool("factor", false);
-    params_ref p2 = p;
-    p2.set_uint("seed", 13);
-    p2.set_bool("factor", false);
+    // params_ref p0 = p;
+    // p0.set_bool("inline_vars", true);
+    // params_ref p1 = p;    
+    // p1.set_uint("seed", 11);
+    // p1.set_bool("factor", false);
+    // params_ref p2 = p;
+    // p2.set_uint("seed", 13);
+    // p2.set_bool("factor", false);
+
+    params_ref p_relax = p;
+    p_relax.set_bool("relaxed_nlsat", true);
 
     return and_then(mk_simplify_tactic(m, p), 
                     mk_propagate_values_tactic(m, p),
 
                     // wzh tactic
-                    mk_qfnra_nlsat_tactic(m, p)
+                    mk_qfnra_nlsat_tactic(m, p_relax)
                     // hzw tactic
                     
                     // or_else(

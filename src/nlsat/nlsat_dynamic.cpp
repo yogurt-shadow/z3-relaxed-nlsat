@@ -633,13 +633,18 @@ namespace nlsat {
 
         // Initialize
         void init_search(){
-            DTRACE(tout << "dynamic init search\n";);
+            DTRACE(tout << "dynamic init search\n";
+                tout << "num arith: " << m_num_arith << std::endl;
+                tout << "num bool: " << m_num_bool << std::endl;
+                tout << "num hybrid: " << m_num_hybrid << std::endl;
+            );
             m_arith_find_stage.resize(m_num_arith, null_var);
             m_bool_find_stage.resize(m_num_bool, null_var);
             m_hybrid_heap.set_bounds(m_num_hybrid);
             m_unit_bool_vars.reset();
             rebuild_var_heap();
             reset_assigned_vars();
+            DTRACE(tout << "dynamic init search finish\n";);
         }
 
         void reset_assigned_vars(){

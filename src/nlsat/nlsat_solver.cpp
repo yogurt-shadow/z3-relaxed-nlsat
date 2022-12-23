@@ -189,7 +189,7 @@ namespace nlsat {
         /**
         * * relaxed nlsat
         */
-        bool                   m_enable_relaxed_nlsat = true;
+        bool                   m_enable_relaxed_nlsat;
         bool                   can_call_ls;
         unsigned               freeze_ls_num;
 
@@ -449,7 +449,7 @@ namespace nlsat {
 
             m_local_search = p.local_search();
             m_ls_simplify = p.local_search_simplify();
-            // m_enable_relaxed_nlsat = p.relaxed_nlsat();
+            m_enable_relaxed_nlsat = p.relaxed_nlsat();
         }
 
         void reset() {
@@ -2352,9 +2352,9 @@ namespace nlsat {
             TRACE("nlsat_fd", tout << "is_full_dimensional: " << is_full_dimensional() << "\n";);
             DTRACE(display_order_mode(std::cout););
 
-            init_search();
             init_pure_bool();
             m_dm.set_arith_num(num_vars());
+            init_search();
             if(m_enable_relaxed_nlsat) {
                 m_lsh.set_var_num(num_vars());
                 freeze_ls_num = 0;
@@ -2432,7 +2432,8 @@ namespace nlsat {
                 m_pure_bool_convert[m_pure_bool_vars[i]] = i;
             }
             m_num_hybrid_vars = m_num_pure_bools + num_vars();
-            DTRACE(tout << "num of pure bools: " << m_num_pure_bools << std::endl;
+            DTRACE(
+                tout << "num of pure bools: " << m_num_pure_bools << std::endl;
                 tout << "num of hybrid vars: " << m_num_hybrid_vars << std::endl;
             );
             DTRACE(tout << "display pure bool vars\n";

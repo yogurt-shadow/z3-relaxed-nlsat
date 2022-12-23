@@ -141,7 +141,7 @@ namespace nlsat {
         var                          &                       m_step;
         var                                                  m_outer_step;
         const unsigned                                       max_step        =       UINT_MAX;
-        const unsigned                                       relaxed_max_step =      100;
+        const unsigned                                       relaxed_max_step =      500;
         bool                                                 is_bool_search;
 
         /**
@@ -185,7 +185,7 @@ namespace nlsat {
         m_nra_operation_table(m_am, m_nra_operation_index, m_nra_operation_value),
         m_step(step), m_stuck(stuck), m_stuck_ratio(ratio), m_cache(cache), m_sub_value(vec),
         m_time_label(1), m_pure_bool_vars(pure_bool_vars), m_pure_bool_convert(pure_bool_convert), m_bvalues(bvalues),
-        m_relaxed_cutoff(10), m_no_operation(false)
+        m_relaxed_cutoff(200), m_no_operation(false)
         {
             set_const_anum();
             clear_statistics();
